@@ -162,11 +162,12 @@ sub store_file {
         $reset_timer->();
         $cv->recv;
         $cv = AnyEvent->condvar;
+        # FIXME - Cheat here, the response should be small, so we assume it'll allways all be
+        #         readable at once, THIS MAY NOT BE TRUE!!!
         $w = AnyEvent->io( fh => $socket_fh, poll => 'r', cb => sub {
             undef $timeout;
             undef $w;
             $cv->send;
-            # FIXME - Cheat here, the response should be small!
             my $res; $socket_fh->read($res, 4096);
             my ($top, @headers) = split /\r?\n/, $res;
             if ($top =~ m{HTTP/1.0\s+2\d\d}) {
