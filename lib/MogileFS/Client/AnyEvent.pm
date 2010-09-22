@@ -3,13 +3,14 @@ use strict;
 use warnings;
 use AnyEvent;
 use AnyEvent::HTTP;
+use AnyEvent::Socket;
 use Carp qw/confess/;
 
 use base qw/ MogileFS::Client /;
 
 sub new_file { confess("new_file is unsupported in " . __PACKAGE__) }
 sub edit_file { confess("edit_file is unsupported in " . __PACKAGE__) }
-sub read_to_file { confess("read_file is unsupported in " . __PACKAGE__) }
+sub read_file { confess("read_file is unsupported in " . __PACKAGE__) }
 
 sub read_to_file {
     my $self = shift;
@@ -21,7 +22,7 @@ sub read_to_file {
     for (1..2) {
         foreach my $path (@paths) {
             my ($bytes, $write) = (0, undef);
-            open my $write, '>', $fn or confess("Could not open $fn to write");
+            open $write, '>', $fn or confess("Could not open $fn to write");
 
             my $cv = AnyEvent->condvar;
             my $h;
@@ -34,7 +35,7 @@ sub read_to_file {
                     warn Dumper $_[0];
                     $h = $headers;
                     1;
-                }
+                },
                 on_body => sub {
                     print $write, $_[0] or return 0;
                     $bytes += length($_[0]);
@@ -88,6 +89,9 @@ sub store_file {
         }
     ) or return undef;
 
+    use Data::Dumper;
+    warn Dumper $res;
+
     my $dests = [];  # [ [devid,path], [devid,path], ... ]
 
     # determine old vs. new format to populate destinations
@@ -103,6 +107,13 @@ sub store_file {
     my ($main_devid, $main_path) = ($main_dest->[0], $main_dest->[1]);
 
     $self->run_hook('new_file_end', $self, $key, $class, $opts);
+    die;
+    tcp_connect "gameserver.deliantra.net", 13327, sub {
+      my ($fh) = @_
+         or die "gameserver.deliantra.net connect failed: $!";
+   
+      # enjoy your filehandle
+   };
 
     my $fh = $self->new_file($key, $class, undef, $opts) or return;
     open my $fh_from, $file or confess("Could not open $file");
@@ -110,6 +121,8 @@ sub store_file {
     my $length = -s $file;
 
     # FIXME
+    my $chunk_size = 4096;
+    my $bytes = 0;
     while (my $len = read $fh_from, my($chunk), $chunk_size) {
         $fh->print($chunk);
         $bytes += $len;
@@ -174,4 +187,5 @@ sub get_file_data {
     return undef;
 }
 
+1;
 
