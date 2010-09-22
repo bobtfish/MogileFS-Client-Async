@@ -4,7 +4,9 @@ use warnings;
 use AnyEvent;
 use AnyEvent::HTTP;
 use AnyEvent::Socket;
+use URI;
 use Carp qw/confess/;
+use POSIX qw( EAGAIN );
 
 use base qw/ MogileFS::Client /;
 
@@ -19,6 +21,8 @@ sub read_to_file {
 
     my @paths = $self->get_paths($key);
 
+    die("No paths for $key") unless @paths;
+
     for (1..2) {
         foreach my $path (@paths) {
             my ($bytes, $write) = (0, undef);
@@ -32,12 +36,11 @@ sub read_to_file {
                 on_header => sub {
                     my ($headers) = @_;
                     return 0 if ($headers->{Status} != 200);
-                    warn Dumper $_[0];
                     $h = $headers;
                     1;
                 },
                 on_body => sub {
-                    print $write, $_[0] or return 0;
+                    syswrite $write, $_[0] or return 0;
                     $bytes += length($_[0]);
                     1;
                 },
@@ -89,9 +92,6 @@ sub store_file {
         }
     ) or return undef;
 
-    use Data::Dumper;
-    warn Dumper $res;
-
     my $dests = [];  # [ [devid,path], [devid,path], ... ]
 
     # determine old vs. new format to populate destinations
@@ -103,35 +103,109 @@ sub store_file {
         }
     }
 
-    my $main_dest = shift @$dests;
-    my ($main_devid, $main_path) = ($main_dest->[0], $main_dest->[1]);
+    my ($length, $error, $devid, $path);
+    foreach my $dest (@$dests) {
+        ($devid, $path) = @$dest;
+        my $uri = URI->new($path);
+        my $cv = AnyEvent->condvar;
+        my ($socket_guard, $socket_fh);
+        my $timeout = AnyEvent->timer( after => 10, cb => sub { undef $socket_guard; $cv->send; } );
+        $socket_guard = tcp_connect $uri->host, $uri->port, sub {
+            my ($fh, $host, $port) = @_;
+            undef $timeout;
+            if (!$fh) {
+                $error = $!;
+                $cv->send;
+                return;
+            }
+            $cv->send;
+            $socket_fh = $fh;
+        };
+        $cv->recv;
+        if ($error || ! $socket_fh) {
+            warn("Connection error: $error to $path");
+            next;
+        }
+        # We are connected!
+        open my $fh_from, $file or confess("Could not open $file");
+        $length = -s $file;
+        my $buf = 'PUT ' . $uri->path . " HTTP/1.0\r\nConnection: close\r\nContent-Length: $length\r\n\r\n";
+        $cv = AnyEvent->condvar;
+        my $w;
+        my $reset_timer = sub {
+            $timeout = AnyEvent->timer( after => 10, cb => sub { undef $w; $error = "Connection timed out duing data transfer"; $cv->send; } );
+        };
+        $w = AnyEvent->io( fh => $socket_fh, poll => 'w', cb => sub {
+            $reset_timer->();
+            if (!length($buf)) {
+                my $bytes = sysread $fh_from, $buf, '4096';
+                if (!defined $bytes) { # Error, read FH blocking, no need to check EAGAIN
+                    $error = $!;
+                    $cv->send;
+                    return;
+                }
+                if (0 == $bytes) { # EOF reading, and we already wrote everything
+                    $cv->send;
+                    return;
+                }
+            }
+            my $len = syswrite $socket_fh, $buf;
+            if ($len && $len > 0) {
+                $buf = substr $buf, $len;
+            }
+            if (!defined $len && $! != EAGAIN) { # Error, we could get EAGAIN as write sock non-blocking
+                $error = $!;
+                $cv->send;
+                return;
+            }
+        });
+        $reset_timer->();
+        $cv->recv;
+        $cv = AnyEvent->condvar;
+        $w = AnyEvent->io( fh => $socket_fh, poll => 'r', cb => sub {
+            undef $timeout;
+            undef $w;
+            $cv->send;
+            # FIXME - Cheat here, the response should be small!
+            my $res; $socket_fh->read($res, 4096);
+            my ($top, @headers) = split /\r?\n/, $res;
+            if ($top =~ m{HTTP/1.0\s+2\d\d}) {
+                # Woo, 200!
+            }
+            else {
+                $error = "Got non-200 from remote server $top";
+            }
+        });
+        $reset_timer->();
+        $cv->recv;
+        undef $timeout;
+        if ($error) {
+            warn("Error sending data $error");
+        }
+        last; # Success
+    }
+    die("Could not write to any mogile hosts, tried " . scalar(@$dests))
+        if $error;
 
     $self->run_hook('new_file_end', $self, $key, $class, $opts);
-    die;
-    tcp_connect "gameserver.deliantra.net", 13327, sub {
-      my ($fh) = @_
-         or die "gameserver.deliantra.net connect failed: $!";
-   
-      # enjoy your filehandle
-   };
 
-    my $fh = $self->new_file($key, $class, undef, $opts) or return;
-    open my $fh_from, $file or confess("Could not open $file");
+    my $rv = $self->{backend}->do_request
+            ("create_close", {
+                fid    => $res->{fid},
+                devid  => $devid,
+                domain => $self->{domain},
+                size   => $length,
+                key    => $key,
+                path   => $path,
+            });
 
-    my $length = -s $file;
-
-    # FIXME
-    my $chunk_size = 4096;
-    my $bytes = 0;
-    while (my $len = read $fh_from, my($chunk), $chunk_size) {
-        $fh->print($chunk);
-        $bytes += $len;
+    unless ($rv) {
+        die "$self->{backend}->{lasterr}: $self->{backend}->{lasterrstr}";
+        return undef;
     }
 
     $self->run_hook('store_file_end', $self, $key, $class, $opts);
 
-    close $fh_from;
-    $fh->close or return;
     return $length;
 }
 
