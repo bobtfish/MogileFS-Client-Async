@@ -2,7 +2,7 @@ use strict;
 use warnings;
 use Test::More;
 
-use_ok 'MogileFS::Client::AnyEvent';
+use_ok 'MogileFS::Client::Async';
 
 done_testing;
 
