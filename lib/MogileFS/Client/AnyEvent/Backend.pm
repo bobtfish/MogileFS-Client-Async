@@ -14,7 +14,7 @@ sub do_request {
 
 sub do_request_async {
     my $self = shift;
-    my ($cmd, $args) = @_;
+    my ($cmd, $args, $cb) = @_;
 
     MogileFS::Backend::_fail("invalid arguments to do_request")
         unless $cmd && $args;
@@ -62,7 +62,12 @@ sub do_request_async {
             # OK <arg_len> <response>
             if ($line =~ /^OK\s+\d*\s*(\S*)/) {
                 my $args = MogileFS::Backend::_decode_url_string($1);
-                $cv->send($args);
+                if ($cb) {
+                    $cb->($cv, $args);
+                }
+                else {
+                    $cv->send($args);
+                }
             }
 
             $cv->throw("invalid response from server: [$line]");
