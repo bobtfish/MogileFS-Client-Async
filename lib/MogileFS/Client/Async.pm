@@ -125,6 +125,7 @@ sub store_file {
         };
         $cv->recv;
         if ($error || ! $socket_fh) {
+            $error ||= 'unknown error';
             warn("Connection error: $error to $path");
             next;
         }
