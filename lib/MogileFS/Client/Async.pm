@@ -106,7 +106,7 @@ sub store_file {
     }
 
     my ($length, $error, $devid, $path);
-    foreach my $dest (@$dests) {
+    foreach my $dest (@$dests, @$dests) { # 1 retry here.
         ($devid, $path) = @$dest;
         my $uri = URI->new($path);
         my $cv = AnyEvent->condvar;
@@ -114,9 +114,9 @@ sub store_file {
         my $timeout = AnyEvent->timer( after => 10, cb => sub { undef $socket_guard; $cv->send; } );
         $socket_guard = tcp_connect $uri->host, $uri->port, sub {
             my ($fh, $host, $port) = @_;
-            undef $timeout;
+            $error = $!;
+            undef $timeout; # Note that removing the guard clears $!
             if (!$fh) {
-                $error = $!;
                 $cv->send;
                 return;
             }
