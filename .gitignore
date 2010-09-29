@@ -1,5 +1,9 @@
+blib/
+pm_to_blib
 MogileFS-Client-Async-*
 META.yml
 Makefile
 inc/
 MANIFEST
+MANIFEST.bak
+
