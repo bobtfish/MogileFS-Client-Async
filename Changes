@@ -1,3 +1,8 @@
+0.002
+  - Add one retry to PUT request on each path given by the tracker
+  - Move use of $! up to hopefully capture the socket error before it
+    is removed by clearing the timeout guard.
+
 0.001
   - Initial very rough cut
 
