@@ -1,4 +1,4 @@
-package MogileFS::Client::AnyEvent;
+package MogileFS::Client::Async;
 use strict;
 use warnings;
 use AnyEvent;

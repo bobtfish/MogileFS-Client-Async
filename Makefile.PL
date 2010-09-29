@@ -2,7 +2,7 @@ use strict;
 use warnings;
 use inc::Module::Install 0.99;
 
-all_from 'lib/MogileFS/Client/AnyEvent.pm';
+all_from 'lib/MogileFS/Client/Async.pm';
 
 requires 'MogileFS::Client';
 requires 'AnyEvent';
