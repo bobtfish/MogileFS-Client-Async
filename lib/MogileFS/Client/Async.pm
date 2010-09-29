@@ -124,11 +124,12 @@ sub store_file {
             $socket_fh = $fh;
         };
         $cv->recv;
-        if ($error || ! $socket_fh) {
+        if (! $socket_fh) {
             $error ||= 'unknown error';
             warn("Connection error: $error to $path");
             next;
         }
+        undef $error;
         # We are connected!
         open my $fh_from, $file or confess("Could not open $file");
         $length = -s $file;
