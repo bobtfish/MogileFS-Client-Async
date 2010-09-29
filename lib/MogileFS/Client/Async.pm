@@ -10,6 +10,8 @@ use POSIX qw( EAGAIN );
 
 use base qw/ MogileFS::Client /;
 
+our $VERSION = '0.001';
+
 sub new_file { confess("new_file is unsupported in " . __PACKAGE__) }
 sub edit_file { confess("edit_file is unsupported in " . __PACKAGE__) }
 sub read_file { confess("read_file is unsupported in " . __PACKAGE__) }
