@@ -5,6 +5,7 @@ use AnyEvent;
 use AnyEvent::HTTP;
 use AnyEvent::Socket;
 use URI;
+use MogileFS::Client::AnyEvent::Backend;
 use Carp qw/confess/;
 use POSIX qw( EAGAIN );
 
@@ -28,6 +29,16 @@ BEGIN {
 }
 
 use namespace::clean;
+
+sub _init {
+    my $self = shift;
+    my %args = @_;
+    $self->{backend} = MogileFS::Client::AnyEvent::Backend->new(
+        hosts => $args{hosts},
+        timeout => $args{timeout},
+    );
+    $self->SUPER::_init(@_);
+}
 
 sub new_file { confess("new_file is unsupported in " . __PACKAGE__) }
 sub edit_file { confess("edit_file is unsupported in " . __PACKAGE__) }
