@@ -106,7 +106,10 @@ sub store_file {
     }
 
     my ($length, $error, $devid, $path);
-    foreach my $dest (@$dests, @$dests) { # 1 retry here.
+    my @dests = (@$dests, @$dests, @$dests); # 2 retries
+    my $try = 0;
+    foreach my $dest (@dests) {
+        $try++;
         ($devid, $path) = @$dest;
         my $uri = URI->new($path);
         my $cv = AnyEvent->condvar;
@@ -137,12 +140,14 @@ sub store_file {
         $cv = AnyEvent->condvar;
         my $w;
         my $reset_timer = sub {
-            $timeout = AnyEvent->timer( after => 10, cb => sub { undef $w; $error = "Connection timed out duing data transfer"; $cv->send; } );
+            my $start = time();
+            $timeout = AnyEvent->timer( after => 20, cb => sub { undef $w; my $took = time() - $start; $error = "Connection timed out duing data transfer (after $took seconds)"; $cv->send; } );
         };
         $w = AnyEvent->io( fh => $socket_fh, poll => 'w', cb => sub {
             $reset_timer->();
             if (!length($buf)) {
                 my $bytes = sysread $fh_from, $buf, '4096';
+                $reset_timer->();
                 if (!defined $bytes) { # Error, read FH blocking, no need to check EAGAIN
                     $error = $!;
                     $cv->send;
@@ -154,6 +159,7 @@ sub store_file {
                 }
             }
             my $len = syswrite $socket_fh, $buf;
+            $reset_timer->();
             if ($len && $len > 0) {
                 $buf = substr $buf, $len;
             }
@@ -185,11 +191,11 @@ sub store_file {
         $cv->recv;
         undef $timeout;
         if ($error) {
-            warn("Error sending data $error");
+            warn("Error sending data (try $try) to $uri: $error");
         }
         last; # Success
     }
-    die("Could not write to any mogile hosts, tried " . scalar(@$dests))
+    die("Could not write to any mogile hosts, should have tried " . scalar(@$dests) . " did try $try")
         if $error;
 
     $self->run_hook('new_file_end', $self, $key, $class, $opts);
