@@ -192,6 +192,7 @@ sub store_file {
         undef $timeout;
         if ($error) {
             warn("Error sending data (try $try) to $uri: $error");
+            next; # Retry
         }
         last; # Success
     }
