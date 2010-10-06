@@ -180,7 +180,7 @@ sub store_file {
             $cv->send;
             my $res; $socket_fh->read($res, 4096);
             my ($top, @headers) = split /\r?\n/, $res;
-            if ($top =~ m{HTTP/1.0\s+2\d\d}) {
+            if ($top =~ m{HTTP/1.[01]\s+2\d\d}) {
                 # Woo, 200!
             }
             else {
