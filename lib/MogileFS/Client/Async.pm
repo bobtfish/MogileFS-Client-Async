@@ -140,14 +140,25 @@ sub store_file {
         $cv = AnyEvent->condvar;
         my $w;
         my $reset_timer = sub {
+            my ($type, $time) = @_;
+            $type ||= 'unknown';
+            $time ||= 60;
             my $start = time();
-            $timeout = AnyEvent->timer( after => 60, cb => sub { undef $w; my $took = time() - $start; $error = "Connection timed out duing data transfer (after $took seconds)"; $cv->send; } );
+            $timeout = AnyEvent->timer(
+                after => $time,
+                cb => sub {
+                    undef $w;
+                    my $took = time() - $start;
+                    $error = "Connection timed out duing data transfer of type $type (after $took seconds)";
+                    $cv->send;
+                },
+            );
         };
         $w = AnyEvent->io( fh => $socket_fh, poll => 'w', cb => sub {
-            $reset_timer->();
+            $reset_timer->('read');
             if (!length($buf)) {
                 my $bytes = sysread $fh_from, $buf, '4096';
-                $reset_timer->();
+                $reset_timer->('write');
                 if (!defined $bytes) { # Error, read FH blocking, no need to check EAGAIN
                     $error = $!;
                     $cv->send;
@@ -159,7 +170,7 @@ sub store_file {
                 }
             }
             my $len = syswrite $socket_fh, $buf;
-            $reset_timer->();
+            $reset_timer->('loop');
             if ($len && $len > 0) {
                 $buf = substr $buf, $len;
             }
@@ -169,7 +180,7 @@ sub store_file {
                 return;
             }
         });
-        $reset_timer->();
+        $reset_timer->('start PUT');
         $cv->recv;
         $cv = AnyEvent->condvar;
         # FIXME - Cheat here, the response should be small, so we assume it'll allways all be
@@ -187,7 +198,9 @@ sub store_file {
                 $error = "Got non-200 from remote server $top";
             }
         });
-        $reset_timer->();
+        $reset_timer->('response', 1200); # Wait up to 20m, as lighty
+                                          # may have to copy the file between
+                                          # disks. EWWWW
         $cv->recv;
         undef $timeout;
         if ($error) {
