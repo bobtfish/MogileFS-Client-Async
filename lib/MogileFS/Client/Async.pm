@@ -141,7 +141,7 @@ sub store_file {
         my $w;
         my $reset_timer = sub {
             my $start = time();
-            $timeout = AnyEvent->timer( after => 20, cb => sub { undef $w; my $took = time() - $start; $error = "Connection timed out duing data transfer (after $took seconds)"; $cv->send; } );
+            $timeout = AnyEvent->timer( after => 60, cb => sub { undef $w; my $took = time() - $start; $error = "Connection timed out duing data transfer (after $took seconds)"; $cv->send; } );
         };
         $w = AnyEvent->io( fh => $socket_fh, poll => 'w', cb => sub {
             $reset_timer->();
