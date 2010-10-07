@@ -1,3 +1,7 @@
+0.006
+  - Have a much longer timeout for HTTP response than general IO as
+    lighty will move the temporary file before responding.
+
 0.005
   - Bump timeout on read/write to 60 seconds for when machines are busy.
 
