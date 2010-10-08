@@ -189,10 +189,18 @@ sub store_file {
             undef $timeout;
             undef $w;
             $cv->send;
-            my $res; $socket_fh->read($res, 4096);
-            my ($top, @headers) = split /\r?\n/, $res;
+            my $buf;
+            do {
+                if ($socket_fh->eof) {
+                    $error = "Connection closed unexpectedly without response";
+                    return;
+                }
+                my $res; $socket_fh->read($res, 4096); $buff .= $res;
+            } while (!length($buf));
+            my ($top, @headers) = split /\r?\n/, $buf;
             if ($top =~ m{HTTP/1.[01]\s+2\d\d}) {
                 # Woo, 200!
+                undef $error;
             }
             else {
                 $error = "Got non-200 from remote server $top";
