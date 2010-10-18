@@ -10,7 +10,7 @@ use POSIX qw( EAGAIN );
 
 use base qw/ MogileFS::Client /;
 
-our $VERSION = '0.006';
+our $VERSION = '0.007';
 
 sub new_file { confess("new_file is unsupported in " . __PACKAGE__) }
 sub edit_file { confess("edit_file is unsupported in " . __PACKAGE__) }
@@ -123,8 +123,8 @@ sub store_file {
                 $cv->send;
                 return;
             }
-            $cv->send;
             $socket_fh = $fh;
+            $cv->send;
         };
         $cv->recv;
         if (! $socket_fh) {

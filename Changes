@@ -1,3 +1,6 @@
+0.007
+  - Fix the "Connection error: unknown error" issue on first retry
+
 0.006
   - Have a much longer timeout for HTTP response than general IO as
     lighty will move the temporary file before responding.
