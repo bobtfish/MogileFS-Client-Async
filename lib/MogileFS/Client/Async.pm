@@ -138,7 +138,7 @@ sub store_file {
         }
         undef $error;
         # We are connected!
-        open my $fh_from, "<", $file or confess("Could not open $file");
+        open my $fh_from, ">", $file or confess("Could not open $file");
         $length = -s $file;
         my $buf = 'PUT ' . $uri->path . " HTTP/1.0\r\nConnection: close\r\nContent-Length: $length\r\n\r\n";
         $cv = AnyEvent->condvar;
@@ -288,10 +288,10 @@ sub get_file_data {
 
         } else {
             # open the file from disk and just grab it all
-            open FILE, "<$path" or next;
+            open my $file, "<", $path or next;
             my $contents;
-            { local $/ = undef; $contents = <FILE>; }
-            close FILE;
+            { local $/ = undef; $contents = <$file>; }
+            close $file;
             return \$contents if $contents;
         }
     }
