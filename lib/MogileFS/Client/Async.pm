@@ -199,7 +199,7 @@ sub store_file {
                     $error = "Connection closed unexpectedly without response";
                     return;
                 }
-                my $res; $socket_fh->read($res, 4096); $buff .= $res;
+                my $res; $socket_fh->read($res, 4096); $buf .= $res;
             } while (!length($buf));
             my ($top, @headers) = split /\r?\n/, $buf;
             if ($top =~ m{HTTP/1.[01]\s+2\d\d}) {
