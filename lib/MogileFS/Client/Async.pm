@@ -141,8 +141,8 @@ sub store_file {
         open my $fh_from, "<", $file or confess("Could not open $file");
 
         # Hint to Linux that doubling readahead will probably pay off.
-        if (defined(&IO::AIO::fadvise) && defined(&IO::AIO::MADV_SEQUENTIAL)) {
-            IO::AIO::fadvise($fh_from, 0, 0, IO::AIO::MADV_SEQUENTIAL());
+        if (defined(&IO::AIO::fadvise) && defined(&IO::AIO::FADV_SEQUENTIAL)) {
+            IO::AIO::fadvise($fh_from, 0, 0, IO::AIO::FADV_SEQUENTIAL())==0 or warn "fadvise failed: $!";
         }
 
         $length = -s $file;
