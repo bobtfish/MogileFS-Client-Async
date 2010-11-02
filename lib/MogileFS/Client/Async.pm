@@ -10,6 +10,10 @@ use POSIX qw( EAGAIN );
 
 use base qw/ MogileFS::Client /;
 
+BEGIN {
+    eval "use IO::AIO;";
+}
+
 our $VERSION = '0.007';
 
 sub new_file { confess("new_file is unsupported in " . __PACKAGE__) }
@@ -134,7 +138,7 @@ sub store_file {
         }
         undef $error;
         # We are connected!
-        open my $fh_from, $file or confess("Could not open $file");
+        open my $fh_from, "<", $file or confess("Could not open $file");
         $length = -s $file;
         my $buf = 'PUT ' . $uri->path . " HTTP/1.0\r\nConnection: close\r\nContent-Length: $length\r\n\r\n";
         $cv = AnyEvent->condvar;
