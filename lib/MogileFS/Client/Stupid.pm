@@ -83,7 +83,7 @@ sub store_file {
             }
             close $fh_from;
 
-            my $buf = "";
+            $buf = "";
             # slurp in what comes back
             do {
                 my $res;
