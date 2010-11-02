@@ -8,6 +8,8 @@ requires 'MogileFS::Client';
 requires 'AnyEvent';
 requires 'AnyEvent::HTTP';
 
+recommends 'IO::AIO' => 3.25;
+
 test_requires 'Test::More' => 0.88;
 
 WriteAll;
