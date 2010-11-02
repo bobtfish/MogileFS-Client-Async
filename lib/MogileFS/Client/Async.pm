@@ -152,7 +152,7 @@ sub store_file {
         open my $fh_from, "<", $file or confess("Could not open $file");
 
         # Hint to Linux that doubling readahead will probably pay off.
-        fadvise($fh_from, 0, 0, FADV_SEQUENTIAL())==0 or warn "fadvise failed: $!";
+        fadvise($fh_from, 0, 0, FADV_SEQUENTIAL());
 
         $length = -s $file;
         my $buf = 'PUT ' . $uri->path . " HTTP/1.0\r\nConnection: close\r\nContent-Length: $length\r\n\r\n";
