@@ -1,3 +1,6 @@
+0.008
+  - Advise the OS about our file accessing through posix_fadvise(2).
+
 0.007
   - Fix the "Connection error: unknown error" issue on first retry
 
