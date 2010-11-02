@@ -139,6 +139,12 @@ sub store_file {
         undef $error;
         # We are connected!
         open my $fh_from, "<", $file or confess("Could not open $file");
+
+        # Hint to Linux that doubling readahead will probably pay off.
+        if (defined(&IO::AIO::fadvise) && defined(&IO::AIO::MADV_SEQUENTIAL)) {
+            IO::AIO::fadvise($fh_from, 0, 0, IO::AIO::MADV_SEQUENTIAL());
+        }
+
         $length = -s $file;
         my $buf = 'PUT ' . $uri->path . " HTTP/1.0\r\nConnection: close\r\nContent-Length: $length\r\n\r\n";
         $cv = AnyEvent->condvar;
