@@ -11,7 +11,18 @@ use POSIX qw( EAGAIN );
 use base qw/ MogileFS::Client /;
 
 BEGIN {
-    eval "use IO::AIO;";
+    my @steal_symbols = qw/ fadvise FADV_SEQUENTIAL /;
+    if (eval {require IO::AIO; 1}) {
+        foreach my $sym (@steal_symbols) {
+            no strict 'refs';
+            *{$sym} = \&{"IO::AIO::$sym"};
+        }
+    }
+    else {
+        foreach my $sym (@steal_symbols) {
+            *{$sym} = sub {};
+        }
+    }
 }
 
 our $VERSION = '0.007';
@@ -141,9 +152,7 @@ sub store_file {
         open my $fh_from, "<", $file or confess("Could not open $file");
 
         # Hint to Linux that doubling readahead will probably pay off.
-        if (defined(&IO::AIO::fadvise) && defined(&IO::AIO::FADV_SEQUENTIAL)) {
-            IO::AIO::fadvise($fh_from, 0, 0, IO::AIO::FADV_SEQUENTIAL())==0 or warn "fadvise failed: $!";
-        }
+        fadvise($fh_from, 0, 0, FADV_SEQUENTIAL())==0 or warn "fadvise failed: $!";
 
         $length = -s $file;
         my $buf = 'PUT ' . $uri->path . " HTTP/1.0\r\nConnection: close\r\nContent-Length: $length\r\n\r\n";
