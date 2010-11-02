@@ -7,6 +7,7 @@ all_from 'lib/MogileFS/Client/Async.pm';
 requires 'MogileFS::Client';
 requires 'AnyEvent';
 requires 'AnyEvent::HTTP';
+requires 'namespace::clean';
 
 recommends 'IO::AIO' => 3.25;
 

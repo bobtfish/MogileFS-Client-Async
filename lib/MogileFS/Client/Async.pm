@@ -25,6 +25,8 @@ BEGIN {
     }
 }
 
+use namespace::clean;
+
 our $VERSION = '0.007';
 
 sub new_file { confess("new_file is unsupported in " . __PACKAGE__) }
@@ -277,40 +279,6 @@ sub store_content {
 
     $fh->close or return;
     length($content);
-}
-
-sub get_file_data {
-    # given a key, load some paths and get data
-    my MogileFS::Client $self = $_[0];
-    my ($key, $timeout) = ($_[1], $_[2]);
-
-    my @paths = $self->get_paths($key, 1);
-    return undef unless @paths;
-
-    # iterate over each
-    foreach my $path (@paths) {
-        next unless defined $path;
-        if ($path =~ m!^http://!) {
-            # try via HTTP
-            my $ua = new LWP::UserAgent;
-            $ua->timeout($timeout || 10);
-
-            my $res = $ua->get($path);
-            if ($res->is_success) {
-                my $contents = $res->content;
-                return \$contents;
-            }
-
-        } else {
-            # open the file from disk and just grab it all
-            open my $file, "<", $path or next;
-            my $contents;
-            { local $/ = undef; $contents = <$file>; }
-            close $file;
-            return \$contents if $contents;
-        }
-    }
-    return undef;
 }
 
 1;
