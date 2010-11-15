@@ -131,7 +131,7 @@ sub store_file {
         my $uri = URI->new($path);
         my $cv = AnyEvent->condvar;
         my ($socket_guard, $socket_fh);
-        my $timeout = AnyEvent->timer( after => 10, cb => sub { undef $socket_guard; $cv->send; } );
+        my $timeout = AnyEvent->timer( after => 10, cb => sub { undef $socket_guard; $error = 'Timed out'; $cv->send; } );
         $socket_guard = tcp_connect $uri->host, $uri->port, sub {
             my ($fh, $host, $port) = @_;
             $error = $!;
