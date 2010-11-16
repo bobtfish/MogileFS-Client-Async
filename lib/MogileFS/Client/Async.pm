@@ -10,6 +10,8 @@ use POSIX qw( EAGAIN );
 
 use base qw/ MogileFS::Client /;
 
+our $VERSION = '0.010';
+
 BEGIN {
     my @steal_symbols = qw/ fadvise FADV_SEQUENTIAL /;
     if (eval {require IO::AIO; 1}) {
@@ -26,8 +28,6 @@ BEGIN {
 }
 
 use namespace::clean;
-
-our $VERSION = '0.007';
 
 sub new_file { confess("new_file is unsupported in " . __PACKAGE__) }
 sub edit_file { confess("edit_file is unsupported in " . __PACKAGE__) }
