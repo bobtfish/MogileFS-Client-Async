@@ -131,18 +131,16 @@ sub store_file {
         my $uri = URI->new($path);
         my $cv = AnyEvent->condvar;
         my ($socket_guard, $socket_fh);
-        my $timeout = AnyEvent->timer( after => 10, cb => sub { undef $socket_guard; $error = 'Timed out'; $cv->send; } );
         $socket_guard = tcp_connect $uri->host, $uri->port, sub {
             my ($fh, $host, $port) = @_;
             $error = $!;
-            undef $timeout; # Note that removing the guard clears $!
             if (!$fh) {
                 $cv->send;
                 return;
             }
             $socket_fh = $fh;
             $cv->send;
-        };
+        }, sub { 10 };
         $cv->recv;
         if (! $socket_fh) {
             $error ||= 'unknown error';
@@ -160,6 +158,7 @@ sub store_file {
         my $buf = 'PUT ' . $uri->path . " HTTP/1.0\r\nConnection: close\r\nContent-Length: $length\r\n\r\n";
         $cv = AnyEvent->condvar;
         my $w;
+        my $timeout;
         my $reset_timer = sub {
             my ($type, $time) = @_;
             $type ||= 'unknown';
