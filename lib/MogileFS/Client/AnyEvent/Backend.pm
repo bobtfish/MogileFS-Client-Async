@@ -46,34 +46,34 @@ sub do_request_async {
         });
 
         warn("PUSH READ");
-        $hdl->push_read(line => sub {
-            my ($hdl, $line) = @_;
-            warn("GOT LINE $line");
-            undef $timer;
-
-            warn "got line <$line>\n";
-            $self->run_hook('do_request_finished', $cmd, $self->{last_host_connected});
-
-            # ERR <errcode> <errstr>
-            if ($line =~ /^ERR\s+(\w+)\s*(\S*)/) {
-                $self->{'lasterr'} = $1;
-                $self->{'lasterrstr'} = $2 ? MogileFS::Backend::_unescape_url_string($2) : undef;
-                $cv->send(undef);
-            }
+        #$hdl->push_read(line => sub {
+        #    my ($hdl, $line) = @_;
+        #    warn("GOT LINE $line");
+        #    undef $timer;
+        #
+        #    warn "got line <$line>\n";
+        #    $self->run_hook('do_request_finished', $cmd, $self->{last_host_connected});
+        #
+        #    # ERR <errcode> <errstr>
+        #    if ($line =~ /^ERR\s+(\w+)\s*(\S*)/) {
+        #        $self->{'lasterr'} = $1;
+        #        $self->{'lasterrstr'} = $2 ? MogileFS::Backend::_unescape_url_string($2) : undef;
+        #        $cv->send(undef);
+        #    }
 
             # OK <arg_len> <response>
-            if ($line =~ /^OK\s+\d*\s*(\S*)/) {
-                my $args = MogileFS::Backend::_decode_url_string($1);
-                if ($cb) {
-                    $cb->($cv, $args);
-                }
-                else {
-                    $cv->send($args);
-                }
-            }
+        #    if ($line =~ /^OK\s+\d*\s*(\S*)/) {
+        #        my $args = MogileFS::Backend::_decode_url_string($1);
+        #        if ($cb) {
+        #            $cb->($cv, $args);
+        #        }
+        #        else {
+        #            $cv->send($args);
+        #        }
+        #    }
 
-            $cv->throw("invalid response from server: [$line]");
-         });
+         #   $cv->throw("invalid response from server: [$line]");
+         #});
 
          warn ("PUSH WRITE " . $req );
          $hdl->push_write($req);
