@@ -32,7 +32,7 @@ my $exp_len = -s $0;
 lives_ok {
     is $mogc->store_file($key, 'rip', $0), $exp_len,
         'Stored file of expected length';
-};
+} 'lives ok';
 
 lives_ok {
     my ($fh, $fn) = tempfile;

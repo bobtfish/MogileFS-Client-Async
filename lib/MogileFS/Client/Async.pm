@@ -75,6 +75,7 @@ sub get_paths {
 
     $self->run_hook('get_paths_start', $self, $key, $opts);
 
+    warn("Get_paths");
     my $res = $self->{backend}->do_request
         ("get_paths", {
             domain => $self->{domain},
@@ -101,6 +102,7 @@ sub read_to_file_async {
     my $key = shift;
     my $fn = shift;
 
+    warn("Get paths");
     $self->get_paths($key, { cb => sub {
         my ($cv, @paths) = @_;
         unless (@paths) {
