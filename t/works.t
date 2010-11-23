@@ -34,9 +34,16 @@ lives_ok {
         'Stored file of expected length';
 } 'lives ok';
 
+my $cv = $mogc->get_paths_async($key);
+lives_ok {
+    my @paths = $cv->recv;
+    ok scalar(@paths), 'Have some paths';
+} 'Lived ok';
+
 lives_ok {
     my ($fh, $fn) = tempfile;
-    $mogc->read_to_file($key, $fn);
+    my $cv = $mogc->read_to_file_async($key, $fn);
+    $cv->recv;
     is( -s $fn, $exp_len, 'Read file back with correct length' )
         or system("diff -u $0 $fn");
     is sha1($fn), $exp_sha, 'Read file back with correct SHA1';

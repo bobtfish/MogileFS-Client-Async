@@ -38,30 +38,30 @@ sub _start_idle_watcher {
             my ($hdl, $line) = @_;
             warn("GOT LINE $line");
             undef $timer;
-        
-           warn "got line <$line>\n";
-           $self->run_hook('do_request_finished', $cmd, $self->{last_host_connected});
-       
+
+            warn "got line <$line>\n";
+            $self->run_hook('do_request_finished', $cmd, $self->{last_host_connected});
+
            # ERR <errcode> <errstr>
            if ($line =~ /^ERR\s+(\w+)\s*(\S*)/) {
                 $self->{'lasterr'} = $1;
                 $self->{'lasterrstr'} = $2 ? MogileFS::Backend::_unescape_url_string($2) : undef;
+                warn("ERR $1 $2");
+                $cv->croak($1, $2 ? MogileFS::Backend::_unescape_url_string($2) : undef);
+                $cb->($cv, $1, $2);
                 return;
             }
 
             # OK <arg_len> <response>
             if ($line =~ /^OK\s+\d*\s*(\S*)/) {
+                warn("Ok, calling callback with $1");
                 my $args = MogileFS::Backend::_decode_url_string($1);
-                if ($cb) {
-                    $cb->($cv, $args);
-                }
-                else {
-                    $cv->send($args);
-                }
+                $cb->($cv, $args);
                 return;
             }
 
-            $cv->throw("invalid response from server: [$line]");
+            $cv->croak("invalid response from server: [$line]");
+            $cb->($cv, "invalid response from server: [$line]");
          });
 
          warn ("PUSH WRITE " . $req );
@@ -77,13 +77,15 @@ sub do_request {
 
 sub do_request_async {
     my $self = shift;
-    my ($cmd, $args, $cb) = @_;
-    my $cv = AnyEvent->condvar;
+    my ($cmd, $args, $cb, $cv) = @_;
+    Carp::confess("No callback supplied") unless $cb;
+    $cv ||= AnyEvent->condvar;
     MogileFS::Backend::_fail("invalid arguments to do_request")
         unless $cmd && $args;
     Carp::cluck("CMD $cmd");
     my $argstr = MogileFS::Backend::_encode_url_string(%$args);
     my $req = "$cmd $argstr\r\n";
+    warn("QUEUE [$req, $cb, $cv]");
     push(@{ $self->{command_queue} }, [$req, $cb, $cv]);
     $self->_start_idle_watcher;
     return $cv;

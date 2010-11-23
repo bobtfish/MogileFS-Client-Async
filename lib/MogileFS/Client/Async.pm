@@ -44,7 +44,7 @@ sub new_file { confess("new_file is unsupported in " . __PACKAGE__) }
 sub edit_file { confess("edit_file is unsupported in " . __PACKAGE__) }
 sub read_file { confess("read_file is unsupported in " . __PACKAGE__) }
 
-sub get_paths {
+sub get_paths_async {
     my MogileFS::Client $self = shift;
     my ($key, $opts) = @_;
 
@@ -57,17 +57,18 @@ sub get_paths {
 
     $noverify = 1 if $opts->{noverify};
     $zone = $opts->{zone};
-    my $cb = $opts->{cb};
-    my $my_cb;
-    if ($cb) {
-        $my_cb = sub {
-            my ($cv, $res) = @_;
-            my @paths = map { $res->{"path$_"} } (1..$res->{paths});
 
-            $self->run_hook('get_paths_end', $self, $key, $opts);
-            $cb->($cv, @paths);
-        }
-    }
+    my $cv = delete($opts->{cv}) || AnyEvent->condvar;
+
+    my $cb = delete($opts->{cb}) || sub { shift->send(@_) };
+
+    my $my_cb = sub {
+        my ($cv, $res) = @_;
+        my @paths = map { $res->{"path$_"} } (1..$res->{paths});
+
+        $self->run_hook('get_paths_end', $self, $key, $opts);
+        $cb->($cv, @paths);
+    };
 
     if (my $pathcount = delete $opts->{pathcount}) {
         $extra_args{pathcount} = $pathcount;
@@ -76,24 +77,16 @@ sub get_paths {
     $self->run_hook('get_paths_start', $self, $key, $opts);
 
     warn("Get_paths");
-    my $res = $self->{backend}->do_request
+    $self->{backend}->do_request
         ("get_paths", {
             domain => $self->{domain},
             key    => $key,
             noverify => $noverify ? 1 : 0,
             zone   => $zone,
 	    %extra_args,
-        }, $my_cb) or return ();
+        }, $my_cb, $cv) or return ();
 
-    if ($my_cb) {
-        return $res;
-    }
-
-    my @paths = map { $res->{"path$_"} } (1..$res->{paths});
-
-    $self->run_hook('get_paths_end', $self, $key, $opts);
-
-    return @paths;
+    return $cv;
 }
 
 
@@ -103,10 +96,12 @@ sub read_to_file_async {
     my $fn = shift;
 
     warn("Get paths");
-    $self->get_paths($key, { cb => sub {
+    my $cv = AnyEvent->condvar;
+    $self->get_paths_async($key, { cv => $cv, cb => sub {
         my ($cv, @paths) = @_;
+        warn("In read_to_file_async cb");
         unless (@paths) {
-            $cv->throw("No paths for $key");
+            $cv->croak("No paths for $key");
             return;
         }
 
@@ -115,10 +110,11 @@ sub read_to_file_async {
 
 
         my $try; $try = sub {
+            warn("HTTP Try");
             my $path = shift(@possible_paths);
 
             unless ($path) {
-                $cv->throw("Could not read $key from mogile");
+                $cv->croak("Could not read $key from mogile");
                 return;
             }
 
@@ -126,16 +122,19 @@ sub read_to_file_async {
             open $write, '>', $fn or confess("Could not open $fn to write");
 
             my $h;
-            my $guard = http_request
+            warn("Starting http req $path");
+            http_request
                 GET => $path,
                 timeout => 120, # 2m
                 on_header => sub {
                     my ($headers) = @_;
+                    warn("Have headers");
                     return 0 if ($headers->{Status} != 200);
                     $h = $headers;
                     1;
                 },
                 on_body => sub {
+                    warn("Have body chunk");
                     syswrite $write, $_[0] or return 0;
                     $bytes += length($_[0]);
                     1;
@@ -153,12 +152,15 @@ sub read_to_file_async {
                     $h = $headers;
                     close($write);
                     undef $write;
+                    warn("Got complete file, sending to cv $cv");
                     $cv->send($bytes);
                     1;
                 };
         };
         $try->();
     }});
+    warn("MOO");
+    return $cv;
 }
 
 sub store_file {
