@@ -44,9 +44,14 @@ sub new_file { confess("new_file is unsupported in " . __PACKAGE__) }
 sub edit_file { confess("edit_file is unsupported in " . __PACKAGE__) }
 sub read_file { confess("read_file is unsupported in " . __PACKAGE__) }
 
+sub get_paths {
+    my ($self, $key, $opts, $cb, $cv) = @_;
+    $cv = $self->get_paths_async($key, $opts, $cb, $cv);
+    $cv->recv;
+}
+
 sub get_paths_async {
-    my MogileFS::Client $self = shift;
-    my ($key, $opts) = @_;
+    my ($self, $key, $opts, $cb, $cv) = @_;
 
     # handle parameters, if any
     my ($noverify, $zone);
@@ -58,9 +63,9 @@ sub get_paths_async {
     $noverify = 1 if $opts->{noverify};
     $zone = $opts->{zone};
 
-    my $cv = delete($opts->{cv}) || AnyEvent->condvar;
+    $cv ||= AnyEvent->condvar;
 
-    my $cb = delete($opts->{cb}) || sub { shift->send(@_) };
+    $cb ||= sub { shift->send(@_) };
 
     my $my_cb = sub {
         my ($cv, $res) = @_;
@@ -89,77 +94,77 @@ sub get_paths_async {
     return $cv;
 }
 
-
 sub read_to_file_async {
-    my $self = shift;
-    my $key = shift;
-    my $fn = shift;
+    my ($self, $key, $fn, $opts, $cb, $cv) = @_;
 
     warn("Get paths");
-    my $cv = AnyEvent->condvar;
-    $self->get_paths_async($key, { cv => $cv, cb => sub {
+    $opts ||= {};
+    $cv ||= AnyEvent->condvar;
+    $cb ||= sub { shift->send(@_) };
+
+    $self->get_paths_async($key, $opts, sub {
         my ($cv, @paths) = @_;
-        warn("In read_to_file_async cb");
+        warn("In read_to_file_async cb for get_paths_async");
         unless (@paths) {
             $cv->croak("No paths for $key");
-            return;
+        }
+        $self->read_http_to_file_async([ @paths ], $fn, $cb, $cv);
+    }, $cv);
+}
+
+sub read_http_to_file_async {
+    my ($self, $paths, $fn, $cb, $cv) = @_;
+
+    my @possible_paths = @$paths;
+    my $try; $try = sub {
+        warn("HTTP Try");
+        my $path = shift(@possible_paths);
+
+        unless ($path) {
+            $cv->croak("Could not read from mogile (no working paths)");
+            $cb->($cv);
         }
 
-        my @possible_paths;
-        push(@possible_paths, @paths) for (1..2);
+        my ($bytes, $write) = (0, undef);
+        open $write, '>', $fn or confess("Could not open $fn to write");
 
-
-        my $try; $try = sub {
-            warn("HTTP Try");
-            my $path = shift(@possible_paths);
-
-            unless ($path) {
-                $cv->croak("Could not read $key from mogile");
-                return;
-            }
-
-            my ($bytes, $write) = (0, undef);
-            open $write, '>', $fn or confess("Could not open $fn to write");
-
-            my $h;
-            warn("Starting http req $path");
-            http_request
-                GET => $path,
-                timeout => 120, # 2m
-                on_header => sub {
-                    my ($headers) = @_;
-                    warn("Have headers");
-                    return 0 if ($headers->{Status} != 200);
-                    $h = $headers;
-                    1;
-                },
-                on_body => sub {
-                    warn("Have body chunk");
-                    syswrite $write, $_[0] or return 0;
-                    $bytes += length($_[0]);
-                    1;
-                },
-                sub { # On complete!
-                    my ($err, $headers) = @_;
-                    close $write;
-                    $err = 1 if !defined($err); # '' on ok, undef on fail
-                    if ($err) {
-                        warn("HTTP error getting mogile $key: " . $headers->{Reason} . "\n");
-                        unlink $fn;
-                        $try->();
-                        return;
-                    }
-                    $h = $headers;
-                    close($write);
-                    undef $write;
-                    warn("Got complete file, sending to cv $cv");
-                    $cv->send($bytes);
-                    1;
-                };
-        };
-        $try->();
-    }});
-    warn("MOO");
+        my $h;
+        warn("Starting http req $path");
+        http_request
+            GET => $path,
+            timeout => 120, # 2m
+            on_header => sub {
+                my ($headers) = @_;
+                warn("Have headers");
+                return 0 if ($headers->{Status} != 200);
+                $h = $headers;
+                1;
+            },
+            on_body => sub {
+                warn("Have body chunk");
+                syswrite $write, $_[0] or return 0;
+                $bytes += length($_[0]);
+                1;
+            },
+            sub { # On complete!
+                my ($err, $headers) = @_;
+                close $write;
+                $err = 1 if !defined($err); # '' on ok, undef on fail
+                if ($err) {
+                    warn("HTTP error getting mogile $path: " . $headers->{Reason} . "\n");
+                    unlink $fn;
+                    $try->();
+                    return;
+                }
+                $h = $headers;
+                close($write);
+                undef $write;
+                warn("Got complete file, sending to callback");
+                $cb->($cv, $bytes);
+                1;
+            };
+    };
+    $try->();
     return $cv;
 }
 

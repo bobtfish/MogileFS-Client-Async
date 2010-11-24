@@ -6,15 +6,28 @@ use AnyEvent::Socket;
 
 use base qw/ MogileFS::Backend /;
 
-use fields ('connecting', 'command_queue', 'handle_cache', 'idle_watcher');
+use fields ('connecting', 'command_queue', 'handle_cache', 'idle_watcher', 'connect_guard');
 
 sub _init {
     my ($class, @args) = @_;
     my $self = $class->SUPER::_init(@args);
-    $self->_get_sock;
-    $self->_start_idle_watcher;
+    $self->{idle_watcher} = undef;
+    delete($self->{connect_guard});
+    if ($self->{handle_cache}) {
+        $self->{handle_cache}->destroy;
+        $self->{handle_cache} = undef;
+    }
+    $self->{sock_cache} = undef;
+    $self->{connecting} = undef;
     $self->{command_queue} = [];
     return $self;
+}
+
+sub reload {
+    my ($self, @args) = @_;
+    my $ret = $self->SUPER::reload(@args);
+    $self->_get_sock;
+    $self->_start_idle_watcher;
 }
 
 sub _start_idle_watcher {
@@ -70,6 +83,31 @@ sub _start_idle_watcher {
      });
 }
 
+=head2 do_request ($cmd, $args, [$callback, $cv])
+
+Do a blocking request on the mogile tracker.
+
+Executes the C< $cmd >
+string against the tracker with the supplied args hash.
+
+When a response returned by the tracker then if it is successful,
+the callback is called and passed the
+condvar as it's first argument and the deserialized results as its
+subsequent arguments.
+
+The default callback (if one is not supplied) will immediately call
+C<< ->send >> on the condvar, passing the arguments.
+
+If the response returned by the tracker is an error then C<< ->croak >>
+will be called on the condvar (with the returned arguemnts), then
+the callback will be invoked as above.
+
+The C<< ->recv >> method will be called on the condvar to cause this
+method to block until complete (and the values returned or an exception
+thrown).
+
+=cut
+
 sub do_request {
     my MogileFS::Backend $self = shift;
     my ($cmd, $args, $cb, $cv) = @_;
@@ -82,6 +120,19 @@ sub do_request {
     $cv = $self->do_request_async($cmd, $args, $cb, $cv);
     $cv->recv;
 }
+
+=head2 do_request_async ($cmd, $args, $cb, $cv)
+
+Fully async method for performing a request on the mogile backend.
+
+As above, the callback will be invoked with the condvar and the deserialized
+return arguments, and the user may use this to schedule another event.
+
+By passing a custom callback and cv in it is possible to chain multiple
+async actions together and (if the condvar is passed from the first to the
+last, return results from the end of the chain).
+
+=cut
 
 sub do_request_async {
     my $self = shift;
@@ -103,7 +154,6 @@ sub do_request_async {
 # or undef if they're all dead
 sub _get_sock {
     my $self = shift;
-
     if ($self->{connecting} || $self->{sock_cache}) {
         return $self->{sock_cache};;
     }
@@ -118,7 +168,6 @@ sub _get_sock {
 
     my $retry_count = 1;
     my $hostgen; $hostgen = sub {
-        Carp::cluck("In host gen");
         if ($retry_count++ <= $tries) {
             my $host = $self->{hosts}->[$idx++ % $size];
 
@@ -141,18 +190,18 @@ sub _get_sock {
 
         my ($ip, $port) = $host =~ /^(.*):(\d+)$/;
 
-        tcp_connect $ip, $port, sub {
+        $self->{connect_guard} = tcp_connect $ip, $port, sub {
             my $fh = shift;
             warn("Connect CB $host $port");
             if (! $fh) {
+                delete($self->{connect_guard});
                 warn("Host dead");
                 $self->{host_dead}->{$host} = time();
                 return $get_conn->();
             }
-            $self->{sock_cache} = $fh;
             $self->{last_host_connected} = $host;
             $self->{handle_cache} = AnyEvent::Handle->new(
-                fh => $self->{sock_cache},
+                fh => $fh,
                 on_error => sub {
                     my ($hdl, $fatal, $msg) = @_;
                     warn "got error $msg\n";
@@ -160,6 +209,7 @@ sub _get_sock {
                     $hdl->destroy;
                     undef $self->{sock_cache};
                     undef $self->{handle_cache};
+                    delete($self->{connect_guard});
                 },
                 on_read => sub {
                     my ($hdl, $data) = @_;
@@ -167,6 +217,7 @@ sub _get_sock {
                 },
             );
             undef $self->{connecting};
+            $self->{sock_cache} = $fh;
             warn("Connected");
         }, sub { 0.25 };
     };
