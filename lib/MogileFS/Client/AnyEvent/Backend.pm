@@ -11,6 +11,7 @@ use fields ('connecting', 'command_queue', 'handle_cache', 'idle_watcher');
 sub _init {
     my ($class, @args) = @_;
     my $self = $class->SUPER::_init(@args);
+    $self->_get_sock;
     $self->_start_idle_watcher;
     $self->{command_queue} = [];
     return $self;
@@ -71,7 +72,14 @@ sub _start_idle_watcher {
 
 sub do_request {
     my MogileFS::Backend $self = shift;
-    my $cv = $self->do_request_async(@_);
+    my ($cmd, $args, $cb, $cv) = @_;
+    $cb ||= sub {
+        my $cv = shift;
+        use Data::Dumper;
+        warn("In CB with " . Dumper(\@_));
+        $cv->send(@_);
+    };
+    $cv = $self->do_request_async($cmd, $args, $cb, $cv);
     $cv->recv;
 }
 

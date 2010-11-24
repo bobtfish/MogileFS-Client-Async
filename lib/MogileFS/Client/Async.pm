@@ -189,6 +189,8 @@ sub store_file {
             multi_dest => 1,
         }
     ) or return undef;
+    use Data::Dumper;
+    warn Dumper($res);
 
     my $dests = [];  # [ [devid,path], [devid,path], ... ]
 

@@ -28,6 +28,8 @@ ok $mogc, 'Have client';
 
 my $key = 'test-t0m-foobar';
 
+eval { $mogc->delete($key); };
+
 my $exp_len = -s $0;
 lives_ok {
     is $mogc->store_file($key, 'rip', $0), $exp_len,
