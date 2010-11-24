@@ -5,6 +5,7 @@ use Test::Exception;
 use MogileFS::Client::Async;
 use Digest::SHA1;
 use File::Temp qw/ tempfile /;
+use Test::Fatal;
 
 sub sha1 {
     open(FH, '<', shift) or die;
@@ -31,31 +32,34 @@ my $key = 'test-t0m-foobar';
 eval { $mogc->delete($key); };
 
 my $exp_len = -s $0;
-lives_ok {
+is exception {
     is $mogc->store_file($key, 'rip', $0), $exp_len,
         'Stored file of expected length';
-} 'lives ok';
+}, undef, 'lives ok';
 
 my $cv = $mogc->get_paths_async($key);
-lives_ok {
+is exception {
     my @paths = $cv->recv;
     ok scalar(@paths), 'Have some paths';
-} 'Lived ok';
+}, undef, 'Lived ok';
 
-lives_ok {
+is exception {
     my ($fh, $fn) = tempfile;
-    my $cv = $mogc->read_to_file_async($key, $fn);
-    $cv->recv;
+    $mogc->read_to_file($key, $fn);
     is( -s $fn, $exp_len, 'Read file back with correct length' )
         or system("diff -u $0 $fn");
     is sha1($fn), $exp_sha, 'Read file back with correct SHA1';
     unlink $fn;
-};
+}, undef;
 
 my $contents = do { local $/; open my $fh, '<', $0 or die; <$fh> };
 my $contents_from_mogile = ${ $mogc->get_file_data($key) };
 
 is $contents_from_mogile, $contents;
+
+is exception { ok $mogc->delete($key), 'deleted'; }, undef, 'Delete no exception';
+is exception { ok !$mogc->delete($key), 'Nothing to delete'; }, undef,
+    'No exception on delete again';
 
 done_testing;
 

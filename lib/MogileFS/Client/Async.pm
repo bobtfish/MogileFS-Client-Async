@@ -8,7 +8,7 @@ use URI;
 use MogileFS::Client::AnyEvent::Backend;
 use Carp qw/confess/;
 use POSIX qw( EAGAIN );
-
+use Try::Tiny qw/ try catch /;
 use base qw/ MogileFS::Client /;
 
 our $VERSION = '0.010';
@@ -29,6 +29,8 @@ BEGIN {
 }
 
 use namespace::clean;
+
+sub _default_callback { shift->send(@_) }
 
 sub _init {
     my $self = shift;
@@ -264,7 +266,7 @@ sub get_paths_async {
 
     $cv ||= AnyEvent->condvar;
 
-    $cb ||= sub { shift->send(@_) };
+    $cb ||= \&_default_callback;
 
     my $my_cb = sub {
         my ($cv, $res) = @_;
@@ -293,13 +295,18 @@ sub get_paths_async {
     return $cv;
 }
 
+sub read_to_file {
+    my ($self, $key, $fn, $opts, $cb, $cv) = @_;
+    $self->read_to_file_async($key, $fn, $opts, $cb, $cv)->recv;
+}
+
 sub read_to_file_async {
     my ($self, $key, $fn, $opts, $cb, $cv) = @_;
 
     warn("Get paths");
     $opts ||= {};
     $cv ||= AnyEvent->condvar;
-    $cb ||= sub { shift->send(@_) };
+    $cb ||= \&_default_callback;
 
     $self->get_paths_async($key, $opts, sub {
         my ($cv, @paths) = @_;
@@ -311,6 +318,7 @@ sub read_to_file_async {
     }, $cv);
 }
 
+# FIXME - Should be possible without a temp file..
 use File::Temp qw/ tempfile /;
 sub get_file_data {
     my ($self, $key, $timeout, $cb, $cv) = @_;
@@ -319,9 +327,7 @@ sub get_file_data {
     return undef unless @paths;
     $cv ||= AnyEvent->condvar;
     my $timer = AnyEvent->timer( after => $timeout, cb => sub { $cv->send(undef) });
-    $cb ||= sub {
-        shift->send(@_);
-    };
+    $cb ||= \&_default_callback;
     my (undef, $filename) = tempfile();
     $self->_read_http_to_file_async([@paths], $filename, $cb, $cv)->recv;
     my $data = do { local $/; open my $fh, '<', $filename or die; <$fh> };
@@ -329,10 +335,28 @@ sub get_file_data {
     return \$data;
 }
 
-#asub delete {}
+sub delete {
+    my ($self, $key, $cb, $cv) = @_;
+    my $res;
+    try { $res = $self->delete_async($key, $cb, $cv)->recv }
+    catch { die $_ unless $_ =~ '^unknown_key' }; # FIXME - exception should eq unknown_key
+    return $res;
+}
 
 sub delete_async {
-    
+    my ($self, $key, $cb, $cv) = @_;
+    $cv ||= AnyEvent->condvar;
+    $cb ||= \&_default_callback;
+    if ($self->{readonly}) {
+        $cb->($cv, undef);
+        return undef;
+    }
+    $self->{backend}->do_request_async(
+        "delete", {
+            domain => $self->{domain},
+            key    => $key,
+        }, $cb, $cv,
+    );
 }
 
 #sub rename {}
