@@ -44,130 +44,6 @@ sub new_file { confess("new_file is unsupported in " . __PACKAGE__) }
 sub edit_file { confess("edit_file is unsupported in " . __PACKAGE__) }
 sub read_file { confess("read_file is unsupported in " . __PACKAGE__) }
 
-sub get_paths {
-    my ($self, $key, $opts, $cb, $cv) = @_;
-    $cv = $self->get_paths_async($key, $opts, $cb, $cv);
-    $cv->recv;
-}
-
-sub get_paths_async {
-    my ($self, $key, $opts, $cb, $cv) = @_;
-
-    # handle parameters, if any
-    my ($noverify, $zone);
-    unless (ref $opts) {
-        $opts = { noverify => $opts };
-    }
-    my %extra_args;
-
-    $noverify = 1 if $opts->{noverify};
-    $zone = $opts->{zone};
-
-    $cv ||= AnyEvent->condvar;
-
-    $cb ||= sub { shift->send(@_) };
-
-    my $my_cb = sub {
-        my ($cv, $res) = @_;
-        my @paths = map { $res->{"path$_"} } (1..$res->{paths});
-
-        $self->run_hook('get_paths_end', $self, $key, $opts);
-        $cb->($cv, @paths);
-    };
-
-    if (my $pathcount = delete $opts->{pathcount}) {
-        $extra_args{pathcount} = $pathcount;
-    }
-
-    $self->run_hook('get_paths_start', $self, $key, $opts);
-
-    warn("Get_paths");
-    $self->{backend}->do_request
-        ("get_paths", {
-            domain => $self->{domain},
-            key    => $key,
-            noverify => $noverify ? 1 : 0,
-            zone   => $zone,
-	    %extra_args,
-        }, $my_cb, $cv) or return ();
-
-    return $cv;
-}
-
-sub read_to_file_async {
-    my ($self, $key, $fn, $opts, $cb, $cv) = @_;
-
-    warn("Get paths");
-    $opts ||= {};
-    $cv ||= AnyEvent->condvar;
-    $cb ||= sub { shift->send(@_) };
-
-    $self->get_paths_async($key, $opts, sub {
-        my ($cv, @paths) = @_;
-        warn("In read_to_file_async cb for get_paths_async");
-        unless (@paths) {
-            $cv->croak("No paths for $key");
-        }
-        $self->read_http_to_file_async([ @paths ], $fn, $cb, $cv);
-    }, $cv);
-}
-
-sub read_http_to_file_async {
-    my ($self, $paths, $fn, $cb, $cv) = @_;
-
-    my @possible_paths = @$paths;
-    my $try; $try = sub {
-        warn("HTTP Try");
-        my $path = shift(@possible_paths);
-
-        unless ($path) {
-            $cv->croak("Could not read from mogile (no working paths)");
-            $cb->($cv);
-        }
-
-        my ($bytes, $write) = (0, undef);
-        open $write, '>', $fn or confess("Could not open $fn to write");
-
-        my $h;
-        warn("Starting http req $path");
-        http_request
-            GET => $path,
-            timeout => 120, # 2m
-            on_header => sub {
-                my ($headers) = @_;
-                warn("Have headers");
-                return 0 if ($headers->{Status} != 200);
-                $h = $headers;
-                1;
-            },
-            on_body => sub {
-                warn("Have body chunk");
-                syswrite $write, $_[0] or return 0;
-                $bytes += length($_[0]);
-                1;
-            },
-            sub { # On complete!
-                my ($err, $headers) = @_;
-                close $write;
-                $err = 1 if !defined($err); # '' on ok, undef on fail
-                if ($err) {
-                    warn("HTTP error getting mogile $path: " . $headers->{Reason} . "\n");
-                    unlink $fn;
-                    $try->();
-                    return;
-                }
-                $h = $headers;
-                close($write);
-                undef $write;
-                warn("Got complete file, sending to callback");
-                $cb->($cv, $bytes);
-                1;
-            };
-    };
-    $try->();
-    return $cv;
-}
-
 sub store_file {
     my $self = shift;
     return undef if $self->{readonly};
@@ -367,39 +243,161 @@ sub store_content {
     length($content);
 }
 
-sub get_file_data {
-    die("BORK");
-    # given a key, load some paths and get data
-    my MogileFS::Client $self = $_[0];
-    my ($key, $timeout) = ($_[1], $_[2]);
+sub get_paths {
+    my ($self, $key, $opts, $cb, $cv) = @_;
+    $cv = $self->get_paths_async($key, $opts, $cb, $cv);
+    $cv->recv;
+}
 
+sub get_paths_async {
+    my ($self, $key, $opts, $cb, $cv) = @_;
+
+    # handle parameters, if any
+    my ($noverify, $zone);
+    unless (ref $opts) {
+        $opts = { noverify => $opts };
+    }
+    my %extra_args;
+
+    $noverify = 1 if $opts->{noverify};
+    $zone = $opts->{zone};
+
+    $cv ||= AnyEvent->condvar;
+
+    $cb ||= sub { shift->send(@_) };
+
+    my $my_cb = sub {
+        my ($cv, $res) = @_;
+        my @paths = map { $res->{"path$_"} } (1..$res->{paths});
+
+        $self->run_hook('get_paths_end', $self, $key, $opts);
+        $cb->($cv, @paths);
+    };
+
+    if (my $pathcount = delete $opts->{pathcount}) {
+        $extra_args{pathcount} = $pathcount;
+    }
+
+    $self->run_hook('get_paths_start', $self, $key, $opts);
+
+    warn("Get_paths");
+    $self->{backend}->do_request
+        ("get_paths", {
+            domain => $self->{domain},
+            key    => $key,
+            noverify => $noverify ? 1 : 0,
+            zone   => $zone,
+	    %extra_args,
+        }, $my_cb, $cv) or return ();
+
+    return $cv;
+}
+
+sub read_to_file_async {
+    my ($self, $key, $fn, $opts, $cb, $cv) = @_;
+
+    warn("Get paths");
+    $opts ||= {};
+    $cv ||= AnyEvent->condvar;
+    $cb ||= sub { shift->send(@_) };
+
+    $self->get_paths_async($key, $opts, sub {
+        my ($cv, @paths) = @_;
+        warn("In read_to_file_async cb for get_paths_async");
+        unless (@paths) {
+            $cv->croak("No paths for $key");
+        }
+        $self->_read_http_to_file_async([ @paths ], $fn, $cb, $cv);
+    }, $cv);
+}
+
+use File::Temp qw/ tempfile /;
+sub get_file_data {
+    my ($self, $key, $timeout, $cb, $cv) = @_;
+    $timeout ||= 10;
     my @paths = $self->get_paths($key, 1);
     return undef unless @paths;
+    $cv ||= AnyEvent->condvar;
+    my $timer = AnyEvent->timer( after => $timeout, cb => sub { $cv->send(undef) });
+    $cb ||= sub {
+        shift->send(@_);
+    };
+    my (undef, $filename) = tempfile();
+    $self->_read_http_to_file_async([@paths], $filename, $cb, $cv)->recv;
+    my $data = do { local $/; open my $fh, '<', $filename or die; <$fh> };
+    unlink $filename;
+    return \$data;
+}
 
-    # iterate over each
-    foreach my $path (@paths) {
-        next unless defined $path;
-        if ($path =~ m!^http://!) {
-            # try via HTTP
-            my $ua = new LWP::UserAgent;
-            $ua->timeout($timeout || 10);
+#asub delete {}
 
-            my $res = $ua->get($path);
-            if ($res->is_success) {
-                my $contents = $res->content;
-                return \$contents;
-            }
+sub delete_async {
+    
+}
 
-        } else {
-            # open the file from disk and just grab it all
-            open FILE, "<$path" or next;
-            my $contents;
-            { local $/ = undef; $contents = <FILE>; }
-            close FILE;
-            return \$contents if $contents;
+#sub rename {}
+
+#sub list_keys
+
+#sub foreach_key
+
+#sub update_class
+
+sub _read_http_to_file_async {
+    my ($self, $paths, $fn, $cb, $cv) = @_;
+
+    Carp::confess("No paths") unless $fn;
+    Carp::confess("No callback") unless $cb;
+    my @possible_paths = @$paths;
+    my $try; $try = sub {
+        warn("HTTP Try");
+        my $path = shift(@possible_paths);
+
+        unless ($path) {
+            $cv->croak("Could not read from mogile (no working paths)");
+            $cb->($cv);
         }
-    }
-    return undef;
+
+        my ($bytes) = (0, undef);
+
+        my $h;
+        open my $write, '>', $fn or confess("Could not open $fn to write");
+        warn("Starting http req $path");
+        http_request
+            GET => $path,
+            timeout => 120, # 2m
+            on_header => sub {
+                my ($headers) = @_;
+                warn("Have headers");
+                return 0 if ($headers->{Status} != 200);
+                $h = $headers;
+                1;
+            },
+            on_body => sub {
+                warn("Have body chunk");
+                syswrite($write, $_[0]) or return 0;
+                $bytes += length($_[0]);
+                1;
+            },
+            sub { # On complete!
+                my ($err, $headers) = @_;
+                close $write;
+                $err = 1 if !defined($err); # '' on ok, undef on fail
+                if ($err) {
+                    warn("HTTP error getting mogile $path: " . $headers->{Reason} . "\n");
+                    unlink $fn;
+                    return $try->();
+                }
+                $h = $headers;
+                close($write);
+                undef $write;
+                warn("Got complete file, sending to callback");
+                $cb->($cv, $bytes);
+                1;
+            };
+    };
+    $try->();
+    return $cv;
 }
 
 1;

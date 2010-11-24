@@ -52,5 +52,10 @@ lives_ok {
     unlink $fn;
 };
 
+my $contents = do { local $/; open my $fh, '<', $0 or die; <$fh> };
+my $contents_from_mogile = ${ $mogc->get_file_data($key) };
+
+is $contents_from_mogile, $contents;
+
 done_testing;
 
