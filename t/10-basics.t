@@ -2,7 +2,7 @@
 
 use strict;
 use Test::More;
-use MogileFS::Client;
+use MogileFS::Client::Async;
 use MogileFS::Admin;
 
 my $moga = MogileFS::Admin->new(hosts => ['127.0.0.1:7001']);
@@ -23,7 +23,7 @@ if ($doms->{$test_ns}) {
     ok($moga->create_domain($test_ns), "created test namespace");
 }
 
-my $mogc = MogileFS::Client->new(hosts  => ['127.0.0.1:7001'],
+my $mogc = MogileFS::Client::Async->new(hosts  => ['127.0.0.1:7001'],
                                  domain => $test_ns);
 ok($mogc, "made mogile client object");
 
