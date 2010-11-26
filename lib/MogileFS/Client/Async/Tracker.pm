@@ -1,4 +1,4 @@
-package MogileFS::Client::AnyEvent::Backend;
+package MogileFS::Client::Async::Tracker;
 use strict;
 use warnings;
 use AnyEvent;
