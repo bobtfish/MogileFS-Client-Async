@@ -5,7 +5,7 @@ use AnyEvent;
 use AnyEvent::HTTP;
 use AnyEvent::Socket;
 use URI;
-use MogileFS::Client::AnyEvent::Backend;
+use MogileFS::Client::Async::Tracker;
 use Carp qw/confess/;
 use POSIX qw( EAGAIN );
 use Try::Tiny qw/ try catch /;
@@ -35,7 +35,7 @@ sub _default_callback { shift->send(@_) }
 sub _init {
     my $self = shift;
     my %args = @_;
-    $self->{backend} = MogileFS::Client::AnyEvent::Backend->new(
+    $self->{backend} = MogileFS::Client::Async::Tracker->new(
         hosts => $args{hosts},
         timeout => $args{timeout},
     );
