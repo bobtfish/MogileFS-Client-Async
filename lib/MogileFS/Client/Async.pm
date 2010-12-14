@@ -90,7 +90,7 @@ sub new_file_async {
                                 closing_cb => $closing_cb,
                                 closed_cb => $closed_cb,
                             ));
-    });
+    }, $cv);
 }
 
 sub edit_file { confess("edit_file is unsupported in " . __PACKAGE__) }
