@@ -32,7 +32,7 @@ sub _default_callback { shift->send(@_) }
 sub new_file {
     my ($self, $key, $class, $bytes, $opts) = @_;
     my $cv_end = AnyEvent->condvar;
-    $self->new_file_async($key, $class, $bytes, $opts, sub { shift->send(@_) }, sub { $cv_end->send }, sub { $cv_end->recv })->recv;
+    $self->new_file_async($key, $class, $bytes, $opts, \&_default_callback, sub { $cv_end->send }, sub { $cv_end->recv })->recv;
 }
 
 sub new_file_async {
@@ -43,7 +43,7 @@ sub new_file_async {
     $bytes += 0;
     $opts ||= {};
     $cv ||= AnyEvent->condvar;
-    die("No fh_cb") unless $fh_cb;
+    die("No fh_cb") unless $fh_cb; # \&_default_callback
     die("No closed_cb") unless $closed_cb;
     $closing_cb ||= sub {};
 
@@ -196,14 +196,12 @@ sub read_to_file {
 sub read_to_file_async {
     my ($self, $key, $fn, $opts, $cb, $cv) = @_;
 
-    warn("Get paths");
     $opts ||= {};
     $cv ||= AnyEvent->condvar;
     $cb ||= \&_default_callback;
 
     $self->get_paths_async($key, $opts, sub {
         my ($cv, @paths) = @_;
-        warn("In read_to_file_async cb for get_paths_async");
         unless (@paths) {
             $cv->croak("No paths for $key");
         }
