@@ -5,7 +5,7 @@ use Test::More;
 use MogileFS::Client::Async;
 use MogileFS::Admin;
 
-my $moga = MogileFS::Admin->new(hosts => ['tracker0.cissme.com:7001']);
+my $moga = MogileFS::Admin->new(hosts => ['127.0.0.1:7001']);
 my $doms = eval { $moga->get_domains };
 
 unless ($doms) {

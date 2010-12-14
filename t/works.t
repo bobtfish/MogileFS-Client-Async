@@ -18,11 +18,9 @@ sub sha1 {
 my $exp_sha = sha1($0);
 
 my $mogc = MogileFS::Client::Async->new(
-    domain => "state51",
+    domain => "test",
     hosts => [qw/
-        tracker0.cissme.com:7001
-        tracker1.cissme.com:7001
-        tracker2.cissme.com:7001
+        localhost:7001
     /],
 );
 ok $mogc, 'Have client';
@@ -33,7 +31,7 @@ eval { $mogc->delete($key); };
 
 my $exp_len = -s $0;
 is exception {
-    is $mogc->store_file($key, 'rip', $0), $exp_len,
+    is $mogc->store_file($key, 'test', $0), $exp_len,
         'Stored file of expected length';
 }, undef, 'lives ok';
 
