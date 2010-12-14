@@ -274,6 +274,7 @@ sub _get_hdl {
     warn("End of get_hdl Handle is " . $self->{hdl});
     my $data = $self->_get_data_chunk;
     if (defined $data) {
+        warn("Pushed " . length($data) . " bytes in get_hdl");
         $hdl->push_write($data);
     }
     $self->{on_hdl_cb}->() if $self->{on_hdl_cb};
@@ -281,14 +282,17 @@ sub _get_hdl {
 
 sub CLOSE {
     my ($self) = @_;
+    my $cv = AnyEvent->condvar;
+    warn("Started with CV $cv");
     my $cb = sub {
         my $data = $self->_get_data_chunk;
         if (defined $data) {
+            warn("Pushed " . length($data) . " bytes in close");
             $self->{hdl}->push_write($data);
         }
         $self->{hdl}->push_write($self->format_chunk_eof)
             unless $self->{content_length};
-        $self->_CLOSE;
+        $self->{hdl}->on_drain( sub { $self->_CLOSE($cv) });
     };
     if ($self->{hdl}) {
         $cb->();
@@ -296,10 +300,11 @@ sub CLOSE {
     else {
         $self->{on_hdl_cb} = $cb;
     }
+    $cv->recv;
 }
 
 sub _CLOSE {
-    my MogileFS::Client::Async::HTTPFile $self = shift;
+    my ($self, $cv) = @_;
 
     # set a message in $! and $@
     my $err = sub {
@@ -357,7 +362,7 @@ sub _CLOSE {
             size   => $self->{content_length} ? $self->{content_length} : $self->{length},
             key    => $key,
             path   => $path,
-    });
+    }, sub { my $cv = shift; warn("In create closed cb $cv"); $cv->send }, $cv);
 #    unless ($rv) {
 #        # set $@, as our callers expect $@ to contain the error message that
 #        # failed during a close.  since we failed in the backend, we have to
