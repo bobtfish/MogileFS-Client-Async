@@ -177,9 +177,7 @@ sub _get_data_chunk {
     if ($self->{content_length}) {
         return $data;
     }
-    my $out = $self->format_chunk($data);
-    warn $out;
-    return $out;
+    $self->format_chunk($data);
 }
 
 sub _get_sock {

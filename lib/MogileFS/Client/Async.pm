@@ -94,7 +94,20 @@ sub new_file_async {
 }
 
 sub edit_file { confess("edit_file is unsupported in " . __PACKAGE__) }
-sub read_file { confess("read_file is unsupported in " . __PACKAGE__) }
+
+sub read_file { # FIXME - This is insane
+    my ($self, $key) = @_;
+    my $timeout ||= 10;
+    my @paths = $self->get_paths($key, 1);
+    return undef unless @paths;
+    my $cv ||= AnyEvent->condvar;
+    my $timer = AnyEvent->timer( after => $timeout, cb => sub { $cv->send(undef) });
+    my $cb ||= \&_default_callback;
+    my (undef, $filename) = tempfile();
+    $self->_read_http_to_file_async([@paths], $filename, $cb, $cv)->recv;
+     open my $fh, '<', $filename or die;;
+    return $fh;
+}
 
 sub store_file {
     my $self = shift;
@@ -265,7 +278,6 @@ sub _read_http_to_file_async {
     Carp::confess("No callback") unless $cb;
     my @possible_paths = @$paths;
     my $try; $try = sub {
-        warn("HTTP Try");
         my $path = shift(@possible_paths);
 
         unless ($path) {
@@ -277,7 +289,6 @@ sub _read_http_to_file_async {
 
         my $h;
         open my $write, '>', $fn or confess("Could not open $fn to write");
-        warn("Starting http req $path");
         http_request
             GET => $path,
             timeout => 120, # 2m

@@ -47,20 +47,16 @@ sub _start_idle_watcher {
             $cb->throw("timed out after $self->{timeout}s against $self->{last_host_connected} when sending command: [$req])");
             # FIXME - Kill socket!
         });
-        warn("PUSH READ");
         $self->{handle_cache}->push_read(line => sub {
             my ($hdl, $line) = @_;
-            warn("GOT LINE $line");
             undef $timer;
 
-            warn "got line <$line>\n";
             $self->run_hook('do_request_finished', $cmd, $self->{last_host_connected});
 
            # ERR <errcode> <errstr>
            if ($line =~ /^ERR\s+(\w+)\s*(\S*)/) {
                 $self->{'lasterr'} = $1;
                 $self->{'lasterrstr'} = $2 ? MogileFS::Backend::_unescape_url_string($2) : undef;
-                warn("ERR $1 $2");
                 $cv->croak($1, $2 ? MogileFS::Backend::_unescape_url_string($2) : undef);
                 $cb->($cv, $1, $2);
                 return;
@@ -68,7 +64,6 @@ sub _start_idle_watcher {
 
             # OK <arg_len> <response>
             if ($line =~ /^OK\s+\d*\s*(\S*)/) {
-                warn("Ok, calling callback with $1");
                 my $args = MogileFS::Backend::_decode_url_string($1);
                 $cb->($cv, $args);
                 return;
@@ -78,7 +73,6 @@ sub _start_idle_watcher {
             $cb->($cv, "invalid response from server: [$line]");
          });
 
-         warn ("PUSH WRITE " . $req );
          $self->{handle_cache}->push_write($req);
      });
 }
@@ -113,8 +107,6 @@ sub do_request {
     my ($cmd, $args, $cb, $cv) = @_;
     $cb ||= sub {
         my $cv = shift;
-        use Data::Dumper;
-        warn("In CB with " . Dumper(\@_));
         $cv->send(@_);
     };
     $cv = $self->do_request_async($cmd, $args, $cb, $cv);
@@ -141,10 +133,8 @@ sub do_request_async {
     $cv ||= AnyEvent->condvar;
     MogileFS::Backend::_fail("invalid arguments to do_request")
         unless $cmd && $args;
-    Carp::cluck("CMD $cmd");
     my $argstr = MogileFS::Backend::_encode_url_string(%$args);
     my $req = "$cmd $argstr\r\n";
-    warn("QUEUE [$req, $cb, $cv]");
     push(@{ $self->{command_queue} }, [$req, $cb, $cv]);
     $self->_start_idle_watcher;
     return $cv;
@@ -174,7 +164,6 @@ sub _get_sock {
             # try dead hosts every 5 seconds
             return $hostgen->() if $self->{host_dead}->{$host} &&
                                 $self->{host_dead}->{$host} > $now - 5;
-            warn("Got host $host");
             return $host;
         }
         warn("No hosts left");
@@ -192,10 +181,8 @@ sub _get_sock {
 
         $self->{connect_guard} = tcp_connect $ip, $port, sub {
             my $fh = shift;
-            warn("Connect CB $host $port");
             if (! $fh) {
                 delete($self->{connect_guard});
-                warn("Host dead");
                 $self->{host_dead}->{$host} = time();
                 return $get_conn->();
             }
@@ -218,7 +205,6 @@ sub _get_sock {
             );
             undef $self->{connecting};
             $self->{sock_cache} = $fh;
-            warn("Connected");
         }, sub { 0.25 };
     };
     $get_conn->();
