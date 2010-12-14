@@ -14,17 +14,10 @@ use base qw/ MogileFS::Client /;
 our $VERSION = '0.010';
 
 BEGIN {
-    my @steal_symbols = qw/ fadvise FADV_SEQUENTIAL /;
-    if (eval {require IO::AIO; 1}) {
-        foreach my $sym (@steal_symbols) {
-            no strict 'refs';
-            *{$sym} = \&{"IO::AIO::$sym"};
-        }
-    }
-    else {
-        foreach my $sym (@steal_symbols) {
-            *{$sym} = sub {};
-        }
+    my $AIO = try {require IO::AIO; 1};
+    foreach my $sym (qw/ fadvise FADV_SEQUENTIAL /) {
+        no strict 'refs';
+        *{$sym} = $AIO ? \&{"IO::AIO::$sym"} : sub {};
     }
 }
 
