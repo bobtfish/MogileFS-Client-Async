@@ -5,7 +5,7 @@ use AnyEvent;
 use AnyEvent::HTTP;
 use AnyEvent::Socket;
 use URI;
-use MogileFS::Client::Async::Tracker;
+use MogileFS::Client::Async::Backend;
 use Carp qw/confess/;
 use POSIX qw( EAGAIN );
 use Try::Tiny qw/ try catch /;
@@ -30,17 +30,9 @@ BEGIN {
 
 use namespace::clean;
 
-sub _default_callback { shift->send(@_) }
+sub _backend_class_name { 'MogileFS::Client::Async::Backend' }
 
-sub _init {
-    my $self = shift;
-    my %args = @_;
-    $self->{backend} = MogileFS::Client::Async::Tracker->new(
-        hosts => $args{hosts},
-        timeout => $args{timeout},
-    );
-    $self->SUPER::_init(@_);
-}
+sub _default_callback { shift->send(@_) }
 
 sub new_file { confess("new_file is unsupported in " . __PACKAGE__) }
 sub edit_file { confess("edit_file is unsupported in " . __PACKAGE__) }
