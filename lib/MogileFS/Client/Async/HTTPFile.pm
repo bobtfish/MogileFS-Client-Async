@@ -212,6 +212,8 @@ sub PRINT {
     $self->{length} += $newlen;
     $self->{data} .= $data;
 
+    warn("PRINT $data");
+
     if ($self->{hdl}) {
         $self->{hdl}->push_write($self->_get_data_chunk);
     }
@@ -227,7 +229,9 @@ sub _get_data_chunk {
     if ($self->{content_length}) {
         return $data;
     }
-    $self->format_chunk($data);
+    my $out = $self->format_chunk($data);
+    warn $out;
+    return $out;
 }
 
 sub _get_sock {
@@ -274,7 +278,7 @@ sub _get_hdl {
     warn("End of get_hdl Handle is " . $self->{hdl});
     my $data = $self->_get_data_chunk;
     if (defined $data) {
-        warn("Pushed " . length($data) . " bytes in get_hdl");
+        warn("Pushed " . length($data) . " bytes in get_hdl " . $data);
         $hdl->push_write($data);
     }
     $self->{on_hdl_cb}->() if $self->{on_hdl_cb};
@@ -287,7 +291,7 @@ sub CLOSE {
     my $cb = sub {
         my $data = $self->_get_data_chunk;
         if (defined $data) {
-            warn("Pushed " . length($data) . " bytes in close");
+            warn("Pushed " . length($data) . " bytes in close " . $data);
             $self->{hdl}->push_write($data);
         }
         $self->{hdl}->push_write($self->format_chunk_eof)
@@ -352,7 +356,7 @@ sub _CLOSE {
 
     my $create_close_args = $self->{create_close_args};
 
-    my $key = shift || $self->{key};
+    my $key = $self->{key};
 
     my $rv = $mg->{backend}->do_request_async("create_close", {
             %$create_close_args,
