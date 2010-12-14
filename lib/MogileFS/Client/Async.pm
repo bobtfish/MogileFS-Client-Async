@@ -31,19 +31,18 @@ sub _default_callback { shift->send(@_) }
 
 sub new_file {
     my ($self, $key, $class, $bytes, $opts) = @_;
-    my $cv_start = AnyEvent->condvar;
     my $cv_end = AnyEvent->condvar;
-    $self->new_file_async($key, $class, $bytes, $opts, sub { $cv_start->send(@_) }, sub { $cv_end->send }, sub { $cv_end->recv });
-    $cv_start->recv;
+    $self->new_file_async($key, $class, $bytes, $opts, sub { shift->send(@_) }, sub { $cv_end->send }, sub { $cv_end->recv })->recv;
 }
 
 sub new_file_async {
     my $self = shift;
     return undef if $self->{readonly};
 
-    my ($key, $class, $bytes, $opts, $fh_cb, $closed_cb, $closing_cb) = @_;
+    my ($key, $class, $bytes, $opts, $fh_cb, $closed_cb, $closing_cb, $cv) = @_;
     $bytes += 0;
     $opts ||= {};
+    $cv ||= AnyEvent->condvar;
     die("No fh_cb") unless $fh_cb;
     die("No closed_cb") unless $closed_cb;
     $closing_cb ||= sub {};
@@ -77,7 +76,7 @@ sub new_file_async {
 
     $self->run_hook('new_file_end', $self, $key, $class, $opts);
 
-    $fh_cb->(IO::WrapTie::wraptie( 'MogileFS::Client::Async::HTTPFile',
+    $fh_cb->($cv, IO::WrapTie::wraptie( 'MogileFS::Client::Async::HTTPFile',
                                 mg    => $self,
                                 fid   => $res->{fid},
                                 path  => $main_path,
@@ -104,12 +103,6 @@ sub store_file {
     my ($key, $class, $file, $opts) = @_;
     $opts ||= {};
 
-    # Extra args to be passed along with the create_open and create_close commands.
-    # Any internally generated args of the same name will overwrite supplied ones in
-    # these hashes.
-    my $create_open_args =  $opts->{create_open_args} || {};
-    my $create_close_args = $opts->{create_close_args} || {};
-
     $self->run_hook('store_file_start', $self, $key, $class, $opts);
 
     my $length = -s $file;
@@ -132,7 +125,6 @@ sub store_file {
 }
 
 sub store_content {
-    die("BORK");
     my MogileFS::Client $self = shift;
     return undef if $self->{readonly};
 
