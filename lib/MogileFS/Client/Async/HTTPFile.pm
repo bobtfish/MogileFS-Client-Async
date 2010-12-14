@@ -286,6 +286,8 @@ sub CLOSE {
         if (defined $data) {
             $self->{hdl}->push_write($data);
         }
+        $self->{hdl}->push_write($self->format_chunk_eof)
+            unless $self->{content_length};
         $self->_CLOSE;
     };
     if ($self->{hdl}) {
