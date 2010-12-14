@@ -66,22 +66,12 @@ sub new_file_async {
 
     my $dests = [];  # [ [devid,path], [devid,path], ... ]
 
-    # determine old vs. new format to populate destinations
-    unless (exists $res->{dev_count}) {
-        push @$dests, [ $res->{devid}, $res->{path} ];
-    } else {
-        for my $i (1..$res->{dev_count}) {
-            push @$dests, [ $res->{"devid_$i"}, $res->{"path_$i"} ];
-        }
+    for my $i (1..$res->{dev_count}) {
+        push @$dests, [ $res->{"devid_$i"}, $res->{"path_$i"} ];
     }
 
     my $main_dest = shift @$dests;
     my ($main_devid, $main_path) = ($main_dest->[0], $main_dest->[1]);
-
-    # create a MogileFS::NewHTTPFile object, based off of IO::File
-    unless ($main_path =~ m!^http://!) {
-        Carp::croak("This version of MogileFS::Client no longer supports non-http storage URLs.\n");
-    }
 
     $self->run_hook('new_file_end', $self, $key, $class, $opts);
 
@@ -135,13 +125,9 @@ sub store_file {
 
     my $dests = [];  # [ [devid,path], [devid,path], ... ]
 
-    # determine old vs. new format to populate destinations
-    unless (exists $res->{dev_count}) {
-        push @$dests, [ $res->{devid}, $res->{path} ];
-    } else {
-        for my $i (1..$res->{dev_count}) {
-            push @$dests, [ $res->{"devid_$i"}, $res->{"path_$i"} ];
-        }
+
+    for my $i (1..$res->{dev_count}) {
+        push @$dests, [ $res->{"devid_$i"}, $res->{"path_$i"} ];
     }
 
     my ($length, $error, $devid, $path);
