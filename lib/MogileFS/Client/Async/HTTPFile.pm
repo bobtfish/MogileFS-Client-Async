@@ -136,63 +136,6 @@ sub _getline {
     return undef;
 }
 
-# abstracted write function that uses non-blocking I/O and checking for
-# writeability to ensure that we don't get stuck doing a write if the
-# node we're talking to goes down.  also handles logic to fall back to
-# a backup node if we're on our first write and the first node is down.
-# this entire function is a blocking function, it just uses intelligent
-# non-blocking write functionality.
-#
-# this function returns success (1) or it croaks on failure.
-sub _write {
-    my MogileFS::Client::Async::HTTPFile $self = shift;
-    return undef unless $self->{sock};
-
-    my $win = '';
-    vec($win, fileno($self->{sock}), 1) = 1;
-
-    # setup data and counters
-    my $data = shift();
-    my $bytesleft = length($data);
-    my $bytessent = 0;
-
-    # main sending loop for data, will keep looping until all of the data
-    # we've been asked to send is sent
-    my $nfound;
-    while ($bytesleft && ($nfound = select(undef, $win, undef, 3))) {
-        my $bytesout = syswrite($self->{sock}, $data, $bytesleft, $bytessent);
-        if (defined $bytesout) {
-            # update our myriad counters
-            $bytessent += $bytesout;
-            $self->{bytes_out} += $bytesout;
-            $bytesleft -= $bytesout;
-        } else {
-            # if we get EAGAIN, restart the select loop, else fail
-            #next if $! == EAGAIN;
-            _fail("error writing to node for device $self->{devid}: $!");
-        }
-    }
-    return 1 unless $bytesleft;
-
-    # at this point, we had a socket error, since we have bytes left, and
-    # the loop above didn't finish sending them.  if this was our first
-    # write, let's try to fall back to a different host.
-    unless ($self->{bytes_out}) {
-        if (my $dest = shift @{$self->{backup_dests}}) {
-            # dest is [$devid,$path]
-            $self->_parse_url($dest->[1]) or _fail("bogus URL");
-            $self->{devid} = $dest->[0];
-            $self->_connect_sock;
-
-            # now repass this write to try again
-            return $self->_write($data);
-        }
-    }
-
-    # total failure (croak)
-    $self->{sock} = undef;
-    _fail(sprintf("unable to write to any allocated storage node, last tried dev %s on host %s uri %s. Had sent %s bytes, %s bytes left", $self->{devid}, $self->{host}, $self->{uri}, $self->{path}, $self->{bytes_out}, $bytesleft));
-}
 
 sub TIEHANDLE {
     my $class = shift;
@@ -316,57 +259,49 @@ sub _CLOSE {
         return undef;
     };
 
-    # get response from put
-    if ($self->{sock}) {
-        my $line = $self->_getline(6);  # wait up to 6 seconds for response to PUT.
+     # FIXME - Cheat here, the response should be small, so we assume it'll allways all be
+     #         readable at once, THIS MAY NOT BE TRUE!!!
+     my $error;
+     my $w; $w = AnyEvent->io( fh => $self->{sock}, poll => 'r', cb => sub {
+         undef $w;
+         my $buf;
+         do {
+             if ($self->{sock}->eof) {
+                 $error = "Connection closed unexpectedly without response";
+                 return;
+             }
+             my $res; $self->{sock}->read($res, 4096); $buf .= $res;
+         } while (!length($buf));
+         my ($top, @headers) = split /\r?\n/, $buf;
+         if ($top =~ m{HTTP/1.[01]\s+2\d\d}) {
+             # Woo, 200!
+             undef $error;
+             my MogileFS $mg = $self->{mg};
+             my $domain = $mg->{domain};
 
-        return $err->("Unable to read response line from server ($self->{sock}) after PUT of $self->{length} to $self->{uri}.  _getline says: $@")
-            unless defined $line;
+             my $fid   = $self->{fid};
+             my $devid = $self->{devid};
+             my $path  = $self->{path};
 
-        if ($line =~ m!^HTTP/\d+\.\d+\s+(\d+)!) {
-            # all 2xx responses are success
-            unless ($1 >= 200 && $1 <= 299) {
-                my $errcode = $1;
-                # read through to the body
-                my ($found_header, $body);
-                while (defined (my $l = $self->_getline)) {
-                    # remove trailing stuff
-                    $l =~ s/[\r\n\s]+$//g;
-                    $found_header = 1 unless $l;
-                    next unless $found_header;
+             my $create_close_args = $self->{create_close_args};
 
-                    # add line to the body, with a space for readability
-                    $body .= " $l";
-                }
-                $body = substr($body, 0, 512) if length $body > 512;
-                return $err->("HTTP response $errcode from upload of $self->{uri} to $self->{sock}: $body");
-            }
-        } else {
-            return $err->("Response line not understood from $self->{sock}: $line");
-        }
-        $self->{sock}->close;
-    }
+             my $key = $self->{key};
 
-    my MogileFS $mg = $self->{mg};
-    my $domain = $mg->{domain};
+             my $rv = $mg->{backend}->do_request_async("create_close", {
+                     %$create_close_args,
+                     fid    => $fid,
+                     devid  => $devid,
+                     domain => $domain,
+                     size   => $self->{content_length} ? $self->{content_length} : $self->{length},
+                     key    => $key,
+                     path   => $path,
+             }, sub { my $cv = shift; warn("In create closed cb $cv"); $cv->send }, $cv);
+         }
+         else {
+             $error = "Got non-200 from remote server $top";
+         }
+     });
 
-    my $fid   = $self->{fid};
-    my $devid = $self->{devid};
-    my $path  = $self->{path};
-
-    my $create_close_args = $self->{create_close_args};
-
-    my $key = $self->{key};
-
-    my $rv = $mg->{backend}->do_request_async("create_close", {
-            %$create_close_args,
-            fid    => $fid,
-            devid  => $devid,
-            domain => $domain,
-            size   => $self->{content_length} ? $self->{content_length} : $self->{length},
-            key    => $key,
-            path   => $path,
-    }, sub { my $cv = shift; warn("In create closed cb $cv"); $cv->send }, $cv);
 #    unless ($rv) {
 #        # set $@, as our callers expect $@ to contain the error message that
 #        # failed during a close.  since we failed in the backend, we have to
