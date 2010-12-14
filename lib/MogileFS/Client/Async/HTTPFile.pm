@@ -18,6 +18,8 @@ use base qw/ MogileFS::NewHTTPFile /;
 use fields qw/
     hdl
     on_hdl_cb
+    closing_cb
+    closed_cb
 /;
 
 BEGIN {
@@ -138,8 +140,11 @@ sub _getline {
 
 
 sub TIEHANDLE {
-    my $class = shift;
-    my $self = $class->SUPER::TIEHANDLE(@_);
+    my $self = shift;
+    $self = fields::new($self) unless ref $self;
+    $self = $self->SUPER::TIEHANDLE(@_);
+    my %args = @_;
+    $self->{$_} = $args{$_} for qw/ closing_cb closed_cb /;
     $self->_get_sock();
     return $self;
 }
@@ -229,8 +234,6 @@ sub _get_hdl {
 
 sub CLOSE {
     my ($self) = @_;
-    my $cv = AnyEvent->condvar;
-    warn("Started with CV $cv");
     my $cb = sub {
         my $data = $self->_get_data_chunk;
         if (defined $data) {
@@ -239,7 +242,7 @@ sub CLOSE {
         }
         $self->{hdl}->push_write($self->format_chunk_eof)
             unless $self->{content_length};
-        $self->{hdl}->on_drain( sub { $self->_CLOSE($cv) });
+        $self->{hdl}->on_drain( sub { $self->_CLOSE() });
     };
     if ($self->{hdl}) {
         $cb->();
@@ -247,11 +250,11 @@ sub CLOSE {
     else {
         $self->{on_hdl_cb} = $cb;
     }
-    $cv->recv;
+    $self->{closing_cb}->();
 }
 
 sub _CLOSE {
-    my ($self, $cv) = @_;
+    my ($self) = @_;
 
     # set a message in $! and $@
     my $err = sub {
@@ -295,7 +298,7 @@ sub _CLOSE {
                      size   => $self->{content_length} ? $self->{content_length} : $self->{length},
                      key    => $key,
                      path   => $path,
-             }, sub { my $cv = shift; warn("In create closed cb $cv"); $cv->send }, $cv);
+             }, sub { $self->{closed_cb}->(@_) });
          }
          else {
              $error = "Got non-200 from remote server $top";

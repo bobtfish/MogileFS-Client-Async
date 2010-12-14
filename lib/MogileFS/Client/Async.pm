@@ -30,12 +30,21 @@ sub _backend_class_name { 'MogileFS::Client::Async::Backend' }
 sub _default_callback { shift->send(@_) }
 
 sub new_file {
+    my ($self, $key, $class, $bytes, $opts) = @_;
+    my $cv = AnyEvent->condvar;
+    $self->new_file_async($key, $class, $bytes, $opts, sub { $cv->send }, sub { $cv->recv });
+}
+
+
+sub new_file_async {
     my $self = shift;
     return undef if $self->{readonly};
 
-    my ($key, $class, $bytes, $opts) = @_;
+    my ($key, $class, $bytes, $opts, $closed_cb, $closing_cb) = @_;
     $bytes += 0;
     $opts ||= {};
+    die("No closed_cb") unless $closed_cb;
+    $closing_cb ||= sub {};
 
     # Extra args to be passed along with the create_open and create_close commands.
     # Any internally generated args of the same name will overwrite supplied ones in
@@ -87,6 +96,8 @@ sub new_file {
                                 content_length => $bytes+0,
                                 create_close_args => $create_close_args,
                                 overwrite => 1,
+                                closing_cb => $closing_cb,
+                                closed_cb => $closed_cb,
                             );
 }
 
