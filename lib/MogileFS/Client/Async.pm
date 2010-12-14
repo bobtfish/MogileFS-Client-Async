@@ -37,7 +37,6 @@ sub new_file {
     $cv_start->recv;
 }
 
-
 sub new_file_async {
     my $self = shift;
     return undef if $self->{readonly};
@@ -112,162 +111,20 @@ sub store_file {
     my $create_close_args = $opts->{create_close_args} || {};
 
     $self->run_hook('store_file_start', $self, $key, $class, $opts);
-    $self->run_hook('new_file_start', $self, $key, $class, $opts);
 
-    my $res = $self->{backend}->do_request(
-        create_open => {
-            %$create_open_args,
-            domain => $self->{domain},
-            class  => $class,
-            key    => $key,
-            fid    => $opts->{fid} || 0, # fid should be specified, or pass 0 meaning to auto-generate one
-            multi_dest => 1,
-        }
-    ) or return undef;
-    use Data::Dumper;
-    warn Dumper($res);
+    my $length = -s $file;
+    open my $fh_from, "<", $file or confess("Could not open $file");
 
-    my $dests = [];  # [ [devid,path], [devid,path], ... ]
+    my $fh = $self->new_file($key, $class, $length, $opts);
 
+    # Hint to Linux that doubling readahead will probably pay off.
+    fadvise($fh_from, 0, 0, FADV_SEQUENTIAL());
 
-    for my $i (1..$res->{dev_count}) {
-        push @$dests, [ $res->{"devid_$i"}, $res->{"path_$i"} ];
+    my $buf;
+    while (sysread($fh_from, $buf, 4096)) {
+        $fh->print($buf);
     }
-
-    my ($length, $error, $devid, $path);
-    my @dests = (@$dests, @$dests, @$dests); # 2 retries
-    my $try = 0;
-    foreach my $dest (@dests) {
-        $try++;
-        ($devid, $path) = @$dest;
-        my $uri = URI->new($path);
-        my $cv = AnyEvent->condvar;
-        my ($socket_guard, $socket_fh);
-        $socket_guard = tcp_connect $uri->host, $uri->port, sub {
-            my ($fh, $host, $port) = @_;
-            $error = $!;
-            if (!$fh) {
-                $cv->send;
-                return;
-            }
-            $socket_fh = $fh;
-            $cv->send;
-        }, sub { 10 };
-        $cv->recv;
-        if (! $socket_fh) {
-            $error ||= 'unknown error';
-            warn("Connection error: $error to $path");
-            next;
-        }
-        undef $error;
-        # We are connected!
-        open my $fh_from, "<", $file or confess("Could not open $file");
-
-        # Hint to Linux that doubling readahead will probably pay off.
-        fadvise($fh_from, 0, 0, FADV_SEQUENTIAL());
-
-        $length = -s $file;
-        my $buf = 'PUT ' . $uri->path . " HTTP/1.0\r\nConnection: close\r\nContent-Length: $length\r\n\r\n";
-        $cv = AnyEvent->condvar;
-        my $w;
-        my $timeout;
-        my $reset_timer = sub {
-            my ($type, $time) = @_;
-            $type ||= 'unknown';
-            $time ||= 60;
-            my $start = time();
-            $timeout = AnyEvent->timer(
-                after => $time,
-                cb => sub {
-                    undef $w;
-                    my $took = time() - $start;
-                    $error = "Connection timed out duing data transfer of type $type (after $took seconds)";
-                    $cv->send;
-                },
-            );
-        };
-        $w = AnyEvent->io( fh => $socket_fh, poll => 'w', cb => sub {
-            $reset_timer->('read');
-            if (!length($buf)) {
-                my $bytes = sysread $fh_from, $buf, '4096';
-                $reset_timer->('write');
-                if (!defined $bytes) { # Error, read FH blocking, no need to check EAGAIN
-                    $error = $!;
-                    $cv->send;
-                    return;
-                }
-                if (0 == $bytes) { # EOF reading, and we already wrote everything
-                    $cv->send;
-                    return;
-                }
-            }
-            my $len = syswrite $socket_fh, $buf;
-            $reset_timer->('loop');
-            if ($len && $len > 0) {
-                $buf = substr $buf, $len;
-            }
-            if (!defined $len && $! != EAGAIN) { # Error, we could get EAGAIN as write sock non-blocking
-                $error = $!;
-                $cv->send;
-                return;
-            }
-        });
-        $reset_timer->('start PUT');
-        $cv->recv;
-        $cv = AnyEvent->condvar;
-        # FIXME - Cheat here, the response should be small, so we assume it'll allways all be
-        #         readable at once, THIS MAY NOT BE TRUE!!!
-        $w = AnyEvent->io( fh => $socket_fh, poll => 'r', cb => sub {
-            undef $timeout;
-            undef $w;
-            $cv->send;
-            my $buf;
-            do {
-                if ($socket_fh->eof) {
-                    $error = "Connection closed unexpectedly without response";
-                    return;
-                }
-                my $res; $socket_fh->read($res, 4096); $buf .= $res;
-            } while (!length($buf));
-            my ($top, @headers) = split /\r?\n/, $buf;
-            if ($top =~ m{HTTP/1.[01]\s+2\d\d}) {
-                # Woo, 200!
-                undef $error;
-            }
-            else {
-                $error = "Got non-200 from remote server $top";
-            }
-        });
-        $reset_timer->('response', 1200); # Wait up to 20m, as lighty
-                                          # may have to copy the file between
-                                          # disks. EWWWW
-        $cv->recv;
-        undef $timeout;
-        if ($error) {
-            warn("Error sending data (try $try) to $uri: $error");
-            next; # Retry
-        }
-        last; # Success
-    }
-    die("Could not write to any mogile hosts, should have tried " . scalar(@$dests) . " did try $try")
-        if $error;
-
-    $self->run_hook('new_file_end', $self, $key, $class, $opts);
-
-    my $rv = $self->{backend}->do_request
-            ("create_close", {
-                fid    => $res->{fid},
-                devid  => $devid,
-                domain => $self->{domain},
-                size   => $length,
-                key    => $key,
-                path   => $path,
-            });
-
-    unless ($rv) {
-        die "$self->{backend}->{lasterr}: $self->{backend}->{lasterrstr}";
-        return undef;
-    }
+    $fh->close;
 
     $self->run_hook('store_file_end', $self, $key, $class, $opts);
 
