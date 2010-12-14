@@ -6,9 +6,11 @@ use AnyEvent::HTTP;
 use AnyEvent::Socket;
 use URI;
 use MogileFS::Client::Async::Backend;
+use MogileFS::Client::Async::HTTPFile;
 use Carp qw/confess/;
 use POSIX qw( EAGAIN );
 use Try::Tiny qw/ try catch /;
+use IO::WrapTie ();
 use base qw/ MogileFS::Client /;
 
 our $VERSION = '0.010';
@@ -27,7 +29,67 @@ sub _backend_class_name { 'MogileFS::Client::Async::Backend' }
 
 sub _default_callback { shift->send(@_) }
 
-sub new_file { confess("new_file is unsupported in " . __PACKAGE__) }
+sub new_file {
+    my $self = shift;
+    return undef if $self->{readonly};
+
+    my ($key, $class, $bytes, $opts) = @_;
+    $bytes += 0;
+    $opts ||= {};
+
+    # Extra args to be passed along with the create_open and create_close commands.
+    # Any internally generated args of the same name will overwrite supplied ones in
+    # these hashes.
+    my $create_open_args =  $opts->{create_open_args} || {};
+    my $create_close_args = $opts->{create_close_args} || {};
+
+    $self->run_hook('new_file_start', $self, $key, $class, $opts);
+
+    my $res = $self->{backend}->do_request
+        ("create_open", {
+            %$create_open_args,
+            domain => $self->{domain},
+            class  => $class,
+            key    => $key,
+            fid    => $opts->{fid} || 0, # fid should be specified, or pass 0 meaning to auto-generate one
+            multi_dest => 1,
+        }) or return undef;
+
+    my $dests = [];  # [ [devid,path], [devid,path], ... ]
+
+    # determine old vs. new format to populate destinations
+    unless (exists $res->{dev_count}) {
+        push @$dests, [ $res->{devid}, $res->{path} ];
+    } else {
+        for my $i (1..$res->{dev_count}) {
+            push @$dests, [ $res->{"devid_$i"}, $res->{"path_$i"} ];
+        }
+    }
+
+    my $main_dest = shift @$dests;
+    my ($main_devid, $main_path) = ($main_dest->[0], $main_dest->[1]);
+
+    # create a MogileFS::NewHTTPFile object, based off of IO::File
+    unless ($main_path =~ m!^http://!) {
+        Carp::croak("This version of MogileFS::Client no longer supports non-http storage URLs.\n");
+    }
+
+    $self->run_hook('new_file_end', $self, $key, $class, $opts);
+
+    return IO::WrapTie::wraptie( 'MogileFS::Client::Async::HTTPFile',
+                                mg    => $self,
+                                fid   => $res->{fid},
+                                path  => $main_path,
+                                devid => $main_devid,
+                                backup_dests => $dests,
+                                class => $class,
+                                key   => $key,
+                                content_length => $bytes+0,
+                                create_close_args => $create_close_args,
+                                overwrite => 1,
+                            );
+}
+
 sub edit_file { confess("edit_file is unsupported in " . __PACKAGE__) }
 sub read_file { confess("read_file is unsupported in " . __PACKAGE__) }
 

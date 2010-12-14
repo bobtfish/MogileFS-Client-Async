@@ -9,6 +9,7 @@ requires 'AnyEvent';
 requires 'AnyEvent::HTTP';
 requires 'namespace::clean';
 requires 'Try::Tiny';
+requires 'CPS';
 
 recommends 'IO::AIO' => 3.25;
 
