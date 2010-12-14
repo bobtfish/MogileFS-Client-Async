@@ -179,17 +179,13 @@ sub get_paths_async {
 
     $self->run_hook('get_paths_start', $self, $key, $opts);
 
-    warn("Get_paths");
-    $self->{backend}->do_request
-        ("get_paths", {
+    $self->{backend}->do_request_async("get_paths", {
             domain => $self->{domain},
             key    => $key,
             noverify => $noverify ? 1 : 0,
             zone   => $zone,
-	    %extra_args,
-        }, $my_cb, $cv) or return ();
-
-    return $cv;
+	        %extra_args,
+        }, $my_cb, $cv);
 }
 
 sub read_to_file {
