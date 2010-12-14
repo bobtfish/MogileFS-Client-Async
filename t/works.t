@@ -73,22 +73,28 @@ is exception { ok !$mogc->delete($key), 'Nothing to delete'; }, undef,
         my @paths = $cv->recv;
         ok scalar(@paths), 'Have some paths';
     }, undef, 'get paths lived ok';
+
+    my $contents_from_mogile = ${ $mogc->get_file_data($key) };
+
+    is length($contents_from_mogile), length($contents);
+
+    is exception { ok $mogc->delete($key), 'deleted'; }, undef, 'Delete no exception';
 }
 
 {
-    my $key = 'test-t0m-fooquux';
-    my $size = length($contents);
-    my $fh;
-    is exception {
-        ok $fh = $mogc->new_file($key, 'test', $size);
-    }, undef;
+#    my $key = 'test-t0m-fooquux';
+#    my $size = length($contents);
+#    my $fh;
+#    is exception {
+#        ok $fh = $mogc->new_file($key, 'test', $size);
+#    }, undef;
 
 #    my $cv = $mogc->get_paths_async($key);
 #    is exception {
 #        my @paths = $cv->recv;
 #        ok scalar(@paths), 'Have some paths';
 #    }, undef, 'get paths lived ok';
-}
+};
 
 done_testing;
 

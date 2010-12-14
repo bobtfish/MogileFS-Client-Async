@@ -14,11 +14,11 @@ use AnyEvent::Socket;
 use Net::HTTP;
 use CPS qw/ kseq /;
 
+use base qw/ MogileFS::NewHTTPFile /;
+
 use fields qw/
     hdl
 /;
-
-use base qw/ MogileFS::NewHTTPFile /;
 
 BEGIN {
     no strict 'refs';
