@@ -61,9 +61,10 @@ is exception { ok !$mogc->delete($key), 'Nothing to delete'; }, undef,
 
 {
     my $key = 'test-t0m-foobaz';
+    my $size = length($contents);
     my $fh;
     is exception {
-        ok $fh = $mogc->new_file($key, 'test');
+        ok $fh = $mogc->new_file($key, 'test', $size);
     }, undef;
     $fh->print($contents);
     $fh->close;

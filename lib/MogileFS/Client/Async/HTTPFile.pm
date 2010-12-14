@@ -12,12 +12,12 @@ use Carp;
 use AnyEvent;
 use AnyEvent::Socket;
 use Net::HTTP;
-use CPS qw/ kseq /;
 
 use base qw/ MogileFS::NewHTTPFile /;
 
 use fields qw/
     hdl
+    on_hdl_cb
 /;
 
 BEGIN {
@@ -194,6 +194,13 @@ sub _write {
     _fail(sprintf("unable to write to any allocated storage node, last tried dev %s on host %s uri %s. Had sent %s bytes, %s bytes left", $self->{devid}, $self->{host}, $self->{uri}, $self->{path}, $self->{bytes_out}, $bytesleft));
 }
 
+sub TIEHANDLE {
+    my $class = shift;
+    my $self = $class->SUPER::TIEHANDLE(@_);
+    $self->_get_sock();
+    return $self;
+}
+
 sub PRINT {
     my MogileFS::Client::Async::HTTPFile $self = shift;
 
@@ -205,7 +212,9 @@ sub PRINT {
     $self->{length} += $newlen;
     $self->{data} .= $data;
 
-    $self->_push_write;
+    if ($self->{hdl}) {
+        $self->{hdl}->push_write($self->_get_data_chunk);
+    }
 }
 *print = *PRINT;
 
@@ -221,27 +230,9 @@ sub _get_data_chunk {
     $self->format_chunk($data);
 }
 
-sub _push_write {
-    my MogileFS::Client::Async::HTTPFile $self = shift;
-    my $to_write = $self->_get_data_chunk;
-    warn("Going to write $to_write");
-    kseq(
-        sub { warn("CPS get_sock"); $self->_get_sock(shift()) },
-        sub { warn("CPS get_hdl"); $self->_get_hdl(shift()) },
-        sub {
-            warn("In final");
-            warn("Handle is " . ref($self->{hdl}));
-            return unless defined $to_write;
-            $self->{hdl}->push_write($to_write);
-        },
-    );
-    warn("Exit push_write");
-}
-
 sub _get_sock {
-    my ($self, $cb) = @_;
+    my ($self) = @_;
     warn("Get sock");
-    goto $cb if $self->{sock};
 
     my $host = $self->{host};
 
@@ -257,15 +248,14 @@ sub _get_sock {
         $self->{sock} = $fh;
         undef $g;
         warn("Got a socket to $host");
-        $cb->();
+        $self->_get_hdl;
     }, sub { 10 };
 }
 
 sub _get_hdl {
-    my ($self, $cb) = @_;
+    my ($self) = @_;
     warn("Get handle " . $self->{hdl});
-    goto $cb if ref($self->{hdl});
-    $self->{hdl} = AnyEvent::Handle->new(
+    my $hdl = $self->{hdl} = AnyEvent::Handle->new(
           fh => $self->{sock},
           on_error => sub {
              my ($hdl, $fatal, $msg) = @_;
@@ -276,18 +266,38 @@ sub _get_hdl {
     );
     warn("Got handle " . $self->{hdl} . " " . ref($self->{hdl}));
     if ($self->{content_length}) {
-        $self->{hdl}->push_write("PUT $self->{uri} HTTP/1.0\r\nContent-length: $self->{content_length}\r\n\r\n");
+        $hdl->push_write("PUT $self->{uri} HTTP/1.0\r\nContent-length: $self->{content_length}\r\n\r\n");
     }
     else {
-        $self->{hdl}->push_write("PUT $self->{uri} HTTP/1.0\r\nTransfer-Encoding: chunked\r\n\r\n");
+        $hdl->push_write("PUT $self->{uri} HTTP/1.0\r\nTransfer-Encoding: chunked\r\n\r\n");
     }
     warn("End of get_hdl Handle is " . $self->{hdl});
+    my $data = $self->_get_data_chunk;
+    if (defined $data) {
+        $hdl->push_write($data);
+    }
+    $self->{on_hdl_cb}->() if $self->{on_hdl_cb};
 }
 
 sub CLOSE {
-    my MogileFS::Client::Async::HTTPFile $self = shift;
+    my ($self) = @_;
+    my $cb = sub {
+        my $data = $self->_get_data_chunk;
+        if (defined $data) {
+            $self->{hdl}->push_write($data);
+        }
+        $self->_CLOSE;
+    };
+    if ($self->{hdl}) {
+        $cb->();
+    }
+    else {
+        $self->{on_hdl_cb} = $cb;
+    }
+}
 
-    $self->_push_write;
+sub _CLOSE {
+    my MogileFS::Client::Async::HTTPFile $self = shift;
 
     # set a message in $! and $@
     my $err = sub {
@@ -337,8 +347,7 @@ sub CLOSE {
 
     my $key = shift || $self->{key};
 
-    my $rv = $mg->{backend}->do_request
-        ("create_close", {
+    my $rv = $mg->{backend}->do_request_async("create_close", {
             %$create_close_args,
             fid    => $fid,
             devid  => $devid,
@@ -346,13 +355,13 @@ sub CLOSE {
             size   => $self->{content_length} ? $self->{content_length} : $self->{length},
             key    => $key,
             path   => $path,
-        });
-    unless ($rv) {
-        # set $@, as our callers expect $@ to contain the error message that
-        # failed during a close.  since we failed in the backend, we have to
-        # do this manually.
-        return $err->("$mg->{backend}->{lasterr}: $mg->{backend}->{lasterrstr}");
-    }
+    });
+#    unless ($rv) {
+#        # set $@, as our callers expect $@ to contain the error message that
+#        # failed during a close.  since we failed in the backend, we have to
+#        # do this manually.
+#        return $err->("$mg->{backend}->{lasterr}: $mg->{backend}->{lasterrstr}");
+#    }
 
     return 1;
 }
