@@ -30,50 +30,75 @@ sub reload {
     $self->_start_idle_watcher;
 }
 
+sub _cancel_idle_watcher {
+    my ($self) = @_;
+    undef $self->{idle_watcher};
+}
+
+sub _get_response_reader {
+    my ($self, $on_read, $on_success, $on_error) = @_;
+    return sub {
+        my ($hdl, $line) = @_;
+        warn("Have response line $line");
+        $on_read->();
+       # ERR <errcode> <errstr>
+       if ($line =~ /^ERR\s+(\w+)\s*(\S*)/) {
+           warn("Call error");
+            $on_error->($1, MogileFS::Backend::_unescape_url_string($2));
+            return;
+        }
+
+        # OK <arg_len> <response>
+        if ($line =~ /^OK\s+\d*\s*(\S*)/) {
+            warn("Call on success");
+            $on_success->(MogileFS::Backend::_decode_url_string($1));
+            return;
+        }
+
+        my $message = "invalid response from server: [$line]";
+        $on_error->("invalid response from server: [$line]");
+        return;
+     }
+}
+
 sub _start_idle_watcher {
     my $self = shift;
     return if $self->{idle_watcher};
+    warn("Starting idle watcher");
     $self->{idle_watcher} = AnyEvent->idle(cb => sub {
-        $self->_get_sock or return;
-        unless (scalar( @{ $self->{command_queue } } )) {
-            undef $self->{idle_watcher};
+        $self->_cancel_idle_watcher;
+        my $cmd = $self->{command_queue}->[0];
+        unless ($cmd) {
+            warn("No command, kill idle watcher");
             return;
         }
-        my $cmd = shift( @{ $self->{command_queue} } );
-        my ($req, $cb, $cv) = @$cmd;
+
+        my ($req, $on_success, $on_error) = @$cmd;
+        warn(" REQ $req");
+        $on_error ||= sub { warn shift(); };
+
+        my $my_on_success = sub { warn("Success"); shift(@{ $self->{command_queue} }); goto $on_success; };
+        my $my_on_error = sub { warn("Error"); shift(@{ $self->{command_queue} }); goto $on_error; };
+
+        $self->_get_sock($my_on_error) or return;
+        warn("Got sock");
         $self->run_hook('do_request_start', $cmd, $self->{last_host_connected});
         my $timer = AnyEvent->timer( after => $self->{timeout}, cb => sub {
             $self->run_hook('do_request_read_timeout', $cmd, $self->{last_host_connected});
-            $cb->throw("timed out after $self->{timeout}s against $self->{last_host_connected} when sending command: [$req])");
-            # FIXME - Kill socket!
+            $on_error->("timed out after $self->{timeout}s against $self->{last_host_connected} when sending command: [$req])");
+            $self->_disconnect_sock;
+            $self->_start_idle_watcher;
         });
-        $self->{handle_cache}->push_read(line => sub {
-            my ($hdl, $line) = @_;
-            undef $timer;
+        $self->{handle_cache}->push_read(line => $self->_get_response_reader(
+            sub { # on_read
+                undef $timer;
+                $self->run_hook('do_request_finished', $cmd, $self->{last_host_connected});
+            },
+            $my_on_success,
+            $my_on_error,
+        ));
 
-            $self->run_hook('do_request_finished', $cmd, $self->{last_host_connected});
-
-           # ERR <errcode> <errstr>
-           if ($line =~ /^ERR\s+(\w+)\s*(\S*)/) {
-                $self->{'lasterr'} = $1;
-                $self->{'lasterrstr'} = $2 ? MogileFS::Backend::_unescape_url_string($2) : undef;
-                $cv->croak($1, $2 ? MogileFS::Backend::_unescape_url_string($2) : undef);
-                $cb->($cv, $1, $2);
-                return;
-            }
-
-            # OK <arg_len> <response>
-            if ($line =~ /^OK\s+\d*\s*(\S*)/) {
-                my $args = MogileFS::Backend::_decode_url_string($1);
-                $cb->($cv, $args);
-                return;
-            }
-
-            $cv->croak("invalid response from server: [$line]");
-            $cb->($cv, "invalid response from server: [$line]");
-         });
-
-         $self->{handle_cache}->push_write($req);
+        $self->{handle_cache}->push_write($req);
      });
 }
 
@@ -103,17 +128,23 @@ thrown).
 =cut
 
 sub do_request {
-    my MogileFS::Backend $self = shift;
-    my ($cmd, $args, $cb, $cv) = @_;
-    $cb ||= sub {
-        my $cv = shift;
-        $cv->send(@_);
-    };
-    $cv = $self->do_request_async($cmd, $args, $cb, $cv);
+    my ($self, $cmd, $args) = @_;
+    MogileFS::Backend::_fail("invalid arguments to do_request")
+        unless $cmd && $args;
+    my $cv = AnyEvent->condvar;
+    $self->do_request_async($cmd, $args,
+        sub { $cv->send(@_) },
+        sub {
+            my ($lasterr, $lasterrstr ) = @_;
+            $self->{lasterr} = $lasterr;
+            $self->{lasterrstr} = $lasterrstr;
+            $cv->send(undef);
+        },
+    );
     $cv->recv;
 }
 
-=head2 do_request_async ($cmd, $args, $cb, $cv)
+=head2 do_request_async ($cmd, $args, $cb, $on_error)
 
 Fully async method for performing a request on the mogile backend.
 
@@ -128,25 +159,40 @@ last, return results from the end of the chain).
 
 sub do_request_async {
     my $self = shift;
-    my ($cmd, $args, $cb, $cv) = @_;
-    Carp::confess("No callback supplied") unless $cb;
-    $cv ||= AnyEvent->condvar;
-    MogileFS::Backend::_fail("invalid arguments to do_request")
-        unless $cmd && $args;
+    my ($cmd, $args, $cb, $on_error) = @_;
+    use Data::Dumper;
+    local $Data::Dumper::Deparse = 1;
+    warn Dumper($on_error);
+    MogileFS::Backend::_fail("invalid arguments to do_request_async")
+        unless $cmd && $args && $cb && $on_error;
     my $argstr = MogileFS::Backend::_encode_url_string(%$args);
     my $req = "$cmd $argstr\r\n";
-    push(@{ $self->{command_queue} }, [$req, $cb, $cv]);
+    push(@{ $self->{command_queue} }, [$req, $cb, $on_error]);
     $self->_start_idle_watcher;
-    return $cv;
+    return 1;
 }
 
-# return a new mogilefsd socket, trying different hosts until one is found,
-# or undef if they're all dead
-sub _get_sock {
-    my $self = shift;
-    if ($self->{connecting} || $self->{sock_cache}) {
-        return $self->{sock_cache};;
+sub _disconnect_sock {
+    my ($self) = @_;
+    if ($self->{handle_cache}) {
+        $self->{handle_cache}->destroy;
     }
+    undef $self->{sock_cache};
+    undef $self->{handle_cache};
+    delete($self->{connect_guard});
+}
+
+# Called by the idle watcher
+# Return a mogilefs socket if one is available right now.
+# Otherwise the idle watcher is cancelled, and we return false (and try to asynchronosely
+#   make a connection)
+# Once a connection is established, or we have given up, the idle watcher is re-enabled
+sub _get_sock {
+    my ($self, $on_error) = @_;
+    if ($self->{connecting} || $self->{sock_cache}) {
+        return $self->{sock_cache};
+    }
+    $self->_cancel_idle_watcher;
     $self->{connecting} = 1;
 
     my $size = scalar(@{$self->{hosts}});
@@ -174,6 +220,8 @@ sub _get_sock {
         my $host = $hostgen->();
         warn("Connecting to " . ($host||'undef - give up'));
         if (! $host ) {
+            $on_error->('Cannot establish a connection to any mogile trackers');
+            $self->_start_idle_watcher;
             return;
         }
 
@@ -184,7 +232,7 @@ sub _get_sock {
             if (! $fh) {
                 delete($self->{connect_guard});
                 $self->{host_dead}->{$host} = time();
-                return $get_conn->();
+                goto $get_conn;
             }
             $self->{last_host_connected} = $host;
             $self->{handle_cache} = AnyEvent::Handle->new(
@@ -193,18 +241,20 @@ sub _get_sock {
                     my ($hdl, $fatal, $msg) = @_;
                     warn "got error $msg\n";
                     $self->run_hook('do_request_send_error', '$cmd', $self->{last_host_connected});
-                    $hdl->destroy;
-                    undef $self->{sock_cache};
-                    undef $self->{handle_cache};
-                    delete($self->{connect_guard});
+                    $self->_disconnect_sock;
+                    $self->_start_idle_watcher;
                 },
                 on_read => sub {
                     my ($hdl, $data) = @_;
-                    warn("GENERIC READ GOT $data");
+                    warn("UNEXPECTED GENERIC READ GOT $data");
+                    $self->_disconnect_sock;
+                    $self->_start_idle_watcher;
                 },
             );
             undef $self->{connecting};
             $self->{sock_cache} = $fh;
+            warn("Am connected, start idle watcher");
+            $self->_start_idle_watcher;
         }, sub { 0.25 };
     };
     $get_conn->();

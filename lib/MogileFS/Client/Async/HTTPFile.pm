@@ -11,7 +11,7 @@ use warnings;
 use Carp;
 use AnyEvent;
 use AnyEvent::Socket;
-use Net::HTTP;
+use Net::HTTP ();
 
 use base qw/ MogileFS::NewHTTPFile /;
 
@@ -20,6 +20,7 @@ use fields qw/
     on_hdl_cb
     closing_cb
     closed_cb
+    error_cb
 /;
 
 BEGIN {
@@ -27,68 +28,6 @@ BEGIN {
     foreach my $name (qw/ format_chunk format_chunk_eof /) {
         *{$name} = Net::HTTP->can($name);
     }
-}
-
-sub _sock_to_host { # (host)
-    my MogileFS::Client::Async::HTTPFile $self = shift;
-    my $host = shift;
-
-    # setup
-    my ($ip, $port) = $host =~ /^(.*):(\d+)$/;
-    my $sock = "Sock_$host";
-    my $proto = getprotobyname('tcp');
-    my $sin;
-
-    # create the socket
-    socket($sock, PF_INET, SOCK_STREAM, $proto);
-    $sin = Socket::sockaddr_in($port, Socket::inet_aton($ip));
-
-    # unblock the socket
-    IO::Handle::blocking($sock, 0);
-
-    # attempt a connection
-    my $ret = connect($sock, $sin);
-    if (!$ret) { # && $! == EINPROGRESS) {
-        my $win = '';
-        vec($win, fileno($sock), 1) = 1;
-
-        # watch for writeability
-        if (select(undef, $win, undef, 3) > 0) {
-            $ret = connect($sock, $sin);
-
-            # EISCONN means connected & won't re-connect, so success
-            #$ret = 1 if !$ret && $! == EISCONN;
-        }
-    }
-
-    # just throw back the socket we have
-    return $sock if $ret;
-    return undef;
-}
-
-sub _connect_sock {
-    my MogileFS::Client::Async::HTTPFile $self = shift;
-    return 1 if $self->{sock};
-
-    my @down_hosts;
-
-    while (!$self->{sock} && $self->{host}) {
-        # attempt to connect
-        return 1 if
-            $self->{sock} = $self->_sock_to_host($self->{host});
-
-        push @down_hosts, $self->{host};
-        if (my $dest = shift @{$self->{backup_dests}}) {
-            # dest is [$devid,$path]
-            _debug("connecting to $self->{host} (dev $self->{devid}) failed; now trying $dest->[1] (dev $dest->[0])");
-            $self->_parse_url($dest->[1]) or _fail("bogus URL");
-            $self->{devid} = $dest->[0];
-        } else {
-            $self->{host} = undef;
-        }
-    }
-
-    _fail("unable to open socket to storage node (tried: @down_hosts): $!");
 }
 
 # abstracted read; implements what ends up being a blocking read but
@@ -288,7 +227,8 @@ sub _CLOSE {
 
              my $key = $self->{key};
 
-             my $rv = $mg->{backend}->do_request_async("create_close", {
+             my $rv = $mg->{backend}->do_request_async("create_close",
+                {
                      %$create_close_args,
                      fid    => $fid,
                      devid  => $devid,
@@ -296,7 +236,10 @@ sub _CLOSE {
                      size   => $self->{content_length} ? $self->{content_length} : $self->{length},
                      key    => $key,
                      path   => $path,
-             }, sub { $self->{closed_cb}->(@_) });
+                },
+                sub { $self->{closed_cb}->(@_) },
+                sub { $self->{error_cb}->(@_) },
+            );
          }
          else {
              $error = "Got non-200 from remote server $top";
