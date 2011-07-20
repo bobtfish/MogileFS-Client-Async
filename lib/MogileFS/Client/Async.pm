@@ -27,7 +27,7 @@ BEGIN {
 
 use namespace::clean;
 
-our $VERSION = '0.008';
+our $VERSION = '0.009';
 
 sub new_file { confess("new_file is unsupported in " . __PACKAGE__) }
 sub edit_file { confess("edit_file is unsupported in " . __PACKAGE__) }
