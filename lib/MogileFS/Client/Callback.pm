@@ -62,7 +62,7 @@ sub store_file_from_callback {
                 Proto => "tcp",
                 PeerPort => $uri->port,
                 PeerHost => $uri->host,
-            ) or die "connect to $path failed: $!"
+            ) or die "connect to $path failed: $!";
             my $buf = 'PUT ' . $uri->path . " HTTP/1.0\r\nConnection: close\r\nContent-Length: $length\r\n\r\n";
             syswrite($socket, $buf)==length($buf) or die "Could not write all: $!";
         }
