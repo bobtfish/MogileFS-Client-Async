@@ -93,6 +93,7 @@ sub store_file_from_callback {
                     my ($top, @headers) = split /\r?\n/, $buf;
                     if ($top =~ m{HTTP/1.[01]\s+2\d\d}) {
                         # Woo, 200!
+                        close($socket) or die "could not close socket: $!";
                         $self->run_hook('store_file_end', $self, $key, $class, $opts);
 
                         my $rv = $self->{backend}->do_request
