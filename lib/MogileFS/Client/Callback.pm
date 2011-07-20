@@ -67,7 +67,7 @@ sub store_file_from_callback {
                 PeerHost => $uri->host,
             ) or die "connect to $path failed: $!";
             my $buf = 'PUT ' . $uri->path . " HTTP/1.0\r\nConnection: close\r\nContent-Length: $length\r\n\r\n";
-            setsockopt($socket, SOL_SOCKET, SO_SNDBUF, 65536) or warn "could enlarge socket buffer: $!";
+            setsockopt($socket, SOL_SOCKET, SO_SNDBUF, 65536) or warn "could enlarge socket buffer: $!" if (unpack("I", getsockopt($socket, SOL_SOCKET, SO_SNDBUF)) < 65536);
             syswrite($socket, $buf)==length($buf) or die "Could not write all: $!";
         }
         catch {
