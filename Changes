@@ -1,3 +1,7 @@
+0.009
+  - "Callback" subclass for when you don't have the entire file to send at
+    the start.
+
 0.008
   - Advise the OS about our file accessing through posix_fadvise(2).
 
