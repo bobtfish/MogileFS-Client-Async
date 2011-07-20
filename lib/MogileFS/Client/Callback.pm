@@ -5,6 +5,7 @@ use URI;
 use Carp qw/confess/;
 use IO::Socket::INET;
 use File::Slurp qw/ slurp /;
+use Try::Tiny;
 
 use base qw/ MogileFS::Client::Async /;
 
