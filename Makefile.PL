@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use inc::Module::Install 0.68;
+use inc::Module::Install 0.99;
 
 all_from 'lib/MogileFS/Client/Async.pm';
 
@@ -13,7 +13,7 @@ recommends 'IO::AIO' => 3.25;
 
 test_requires 'Test::More' => 0.88;
 
-repository('git://github.com/bobtfish/MogileFS-Client-Async.git');
+repository 'git://github.com/bobtfish/MogileFS-Client-Async.git';
 
 WriteAll;
 
