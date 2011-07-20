@@ -6,6 +6,7 @@ use Carp qw/confess/;
 use IO::Socket::INET;
 use File::Slurp qw/ slurp /;
 use Try::Tiny;
+use Socket qw/ SO_SNDBUF SOL_SOCKET /;
 
 use base qw/ MogileFS::Client::Async /;
 
@@ -36,6 +37,7 @@ sub store_file_from_callback {
             fid    => $opts->{fid} || 0, # fid should be specified, or pass 0 meaning to auto-generate one
             multi_dest => 1,
         }
+
     ) or return undef;
 
     my $dests = [];  # [ [devid,path], [devid,path], ... ]
@@ -65,6 +67,7 @@ sub store_file_from_callback {
                 PeerHost => $uri->host,
             ) or die "connect to $path failed: $!";
             my $buf = 'PUT ' . $uri->path . " HTTP/1.0\r\nConnection: close\r\nContent-Length: $length\r\n\r\n";
+            setsockopt($socket, SOL_SOCKET, SO_SNDBUF, 65536) or warn "could enlarge socket buffer: $!";
             syswrite($socket, $buf)==length($buf) or die "Could not write all: $!";
         }
         catch {
