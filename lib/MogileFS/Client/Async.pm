@@ -10,6 +10,8 @@ use POSIX qw( EAGAIN );
 
 use base qw/ MogileFS::Client /;
 
+our $VERSION = '0.011';
+
 BEGIN {
     my @steal_symbols = qw/ fadvise FADV_SEQUENTIAL /;
     if (eval {require IO::AIO; 1}) {
@@ -26,8 +28,6 @@ BEGIN {
 }
 
 use namespace::clean;
-
-our $VERSION = '0.009';
 
 sub new_file { confess("new_file is unsupported in " . __PACKAGE__) }
 sub edit_file { confess("edit_file is unsupported in " . __PACKAGE__) }
@@ -131,18 +131,16 @@ sub store_file {
         my $uri = URI->new($path);
         my $cv = AnyEvent->condvar;
         my ($socket_guard, $socket_fh);
-        my $timeout = AnyEvent->timer( after => 10, cb => sub { undef $socket_guard; $cv->send; } );
         $socket_guard = tcp_connect $uri->host, $uri->port, sub {
             my ($fh, $host, $port) = @_;
             $error = $!;
-            undef $timeout; # Note that removing the guard clears $!
             if (!$fh) {
                 $cv->send;
                 return;
             }
             $socket_fh = $fh;
             $cv->send;
-        };
+        }, sub { 10 };
         $cv->recv;
         if (! $socket_fh) {
             $error ||= 'unknown error';
@@ -160,6 +158,7 @@ sub store_file {
         my $buf = 'PUT ' . $uri->path . " HTTP/1.0\r\nConnection: close\r\nContent-Length: $length\r\n\r\n";
         $cv = AnyEvent->condvar;
         my $w;
+        my $timeout;
         my $reset_timer = sub {
             my ($type, $time) = @_;
             $type ||= 'unknown';
