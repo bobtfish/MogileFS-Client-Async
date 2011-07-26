@@ -82,10 +82,11 @@ sub store_file_from_callback {
                 my ($data, $eof) = @_;
 
                 die "We've already hit EOF!" if $eof_condition;
-                $written_bytes += length($data);
+                my $length_of_data = length(ref($data) ? $$data : $data);
+                $written_bytes += $length_of_data;
 
                 die "you're trying to write $written_bytes out of $length!" if $written_bytes > $length;
-                syswrite($socket, $data)==length($data) or die "could not write entire buffer: $!";
+                syswrite($socket, ref($data) ? $$data : $data)==$length_of_data or die "could not write entire buffer: $!";
 
                 if ($eof) {
                     $self->run_hook('new_file_end', $self, $key, $class, $opts);
