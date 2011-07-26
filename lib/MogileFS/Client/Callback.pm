@@ -94,10 +94,10 @@ sub store_file_from_callback {
                     die "EOF at $written_bytes out of $length!" if $written_bytes != $length;
 
                     my $buf = slurp($socket);
+                    close($socket) or die "could not close socket: $!";
                     my ($top, @headers) = split /\r?\n/, $buf;
                     if ($top =~ m{HTTP/1.[01]\s+2\d\d}) {
                         # Woo, 200!
-                        close($socket) or die "could not close socket: $!";
                         $self->run_hook('store_file_end', $self, $key, $class, $opts);
 
                         my $rv = $self->{backend}->do_request
