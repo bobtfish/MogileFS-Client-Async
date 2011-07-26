@@ -1,3 +1,6 @@
+0.012
+  - Data can be passed by reference.
+
 0.011
   - "Callback" subclass for when you don't have the entire file to send at
     the start.
