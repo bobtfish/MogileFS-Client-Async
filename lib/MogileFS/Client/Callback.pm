@@ -6,9 +6,11 @@ use Carp qw/confess/;
 use IO::Socket::INET;
 use File::Slurp qw/ slurp /;
 use Try::Tiny;
-use Socket qw/ SO_SNDBUF SOL_SOCKET IPPROTO_TCP TCP_CORK /;
+use Socket qw/ SO_SNDBUF SOL_SOCKET IPPROTO_TCP /;
 
 use base qw/ MogileFS::Client::Async /;
+
+use constant TCP_CORK => ($^O eq "linux" ? 3 : 0); # XXX
 
 use namespace::clean;
 
