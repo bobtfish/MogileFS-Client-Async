@@ -6,7 +6,7 @@ use Carp qw/confess/;
 use IO::Socket::INET;
 use File::Slurp qw/ slurp /;
 use Try::Tiny;
-use Socket qw/ SO_SNDBUF SOL_SOCKET /;
+use Socket qw/ SO_SNDBUF SOL_SOCKET IPPROTO_TCP TCP_CORK /;
 
 use base qw/ MogileFS::Client::Async /;
 
@@ -68,6 +68,7 @@ sub store_file_from_callback {
             ) or die "connect to $path failed: $!";
             my $buf = 'PUT ' . $uri->path . " HTTP/1.0\r\nConnection: close\r\nContent-Length: $length\r\n\r\n";
             setsockopt($socket, SOL_SOCKET, SO_SNDBUF, 65536) or warn "could enlarge socket buffer: $!" if (unpack("I", getsockopt($socket, SOL_SOCKET, SO_SNDBUF)) < 65536);
+            setsockopt($socket, IPPROTO_TCP, TCP_CORK, 1) or warn "could not set TCP_CORK";
             syswrite($socket, $buf)==length($buf) or die "Could not write all: $!";
         }
         catch {
