@@ -1,6 +1,6 @@
 use strict;
 use warnings;
-use inc::Module::Install 0.99;
+use inc::Module::Install 0.92;
 
 all_from 'lib/MogileFS/Client/Async.pm';
 
