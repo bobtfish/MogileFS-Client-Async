@@ -10,7 +10,7 @@ use POSIX qw( EAGAIN );
 
 use base qw/ MogileFS::Client /;
 
-our $VERSION = '0.011';
+our $VERSION = '0.013';
 
 BEGIN {
     my @steal_symbols = qw/ fadvise FADV_SEQUENTIAL /;
