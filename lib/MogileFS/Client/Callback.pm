@@ -95,6 +95,7 @@ sub store_file_from_callback {
                     die "EOF at $written_bytes out of $length!" if $written_bytes != $length;
 
                     my $buf = slurp($socket);
+                    setsockopt($socket, IPPROTO_TCP, TCP_CORK, 0) or warn "could not unset TCP_CORK";
                     close($socket) or die "could not close socket: $!";
                     my ($top, @headers) = split /\r?\n/, $buf;
                     if ($top =~ m{HTTP/1.[01]\s+2\d\d}) {
