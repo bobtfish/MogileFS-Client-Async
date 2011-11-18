@@ -7,6 +7,7 @@ use IO::Socket::INET;
 use File::Slurp qw/ slurp /;
 use Try::Tiny;
 use Socket qw/ SO_SNDBUF SOL_SOCKET IPPROTO_TCP /;
+use Time::HiRes qw/ gettimeofday tv_interval /;
 
 use base qw/ MogileFS::Client::Async /;
 
@@ -61,13 +62,17 @@ sub store_file_from_callback {
         ($devid, $path) = @$dest;
         my $uri = URI->new($path);
         my $socket;
+        my $t0;
+        my $t1;
         try {
+            $t0 = [gettimeofday];
             $socket = IO::Socket::INET->new(
                 Timeout => 10,
                 Proto => "tcp",
                 PeerPort => $uri->port,
                 PeerHost => $uri->host,
             ) or die "connect to $path failed: $!";
+            $t1 = [gettimeofday];
             my $buf = 'PUT ' . $uri->path . " HTTP/1.0\r\nConnection: close\r\nContent-Length: $length\r\n\r\n";
             setsockopt($socket, SOL_SOCKET, SO_SNDBUF, 65536) or warn "could enlarge socket buffer: $!" if (unpack("I", getsockopt($socket, SOL_SOCKET, SO_SNDBUF)) < 65536);
             setsockopt($socket, IPPROTO_TCP, TCP_CORK, 1) or warn "could not set TCP_CORK";
@@ -76,6 +81,15 @@ sub store_file_from_callback {
         catch {
             $socket = undef;
             warn "connect to $dest failed: $!";
+            if ($opts->{on_failure}) {
+                $opts->{on_failure}->({
+                    uri => $path,
+                    bytes_sent => 0,
+                    total_bytes => $length,
+                    client => 'callback',
+                    time_elapsed => tv_interval($t0, [gettimeofday]),
+                });
+            }
         };
 
         if ($socket) {
@@ -84,25 +98,59 @@ sub store_file_from_callback {
             return sub {
                 my ($data, $eof) = @_;
 
+                # We don't notify you about this error, for it is your fault not the network's.
                 die "We've already hit EOF!" if $eof_condition;
                 my $length_of_data = length(ref($data) ? $$data : $data);
-                $written_bytes += $length_of_data;
 
+                # We don't notify you about this error, for it is your fault not the network's.
                 die "you're trying to write $written_bytes out of $length!" if $written_bytes > $length;
-                syswrite($socket, ref($data) ? $$data : $data)==$length_of_data or die "could not write entire buffer: $!";
+
+
+                # Write failed, so log an error
+                if (syswrite($socket, ref($data) ? $$data : $data)!=$length_of_data) {
+                    if ($opts->{on_failure}) {
+                        $opts->{on_failure}->({
+                            uri => $path,
+                            bytes_sent => $written_bytes,
+                            total_bytes => $length,
+                            client => 'callback',
+                            time_elapsed => tv_interval($t0, [gettimeofday]),
+                        });
+                    }
+
+                    die "could not write entire buffer: $!";
+                }
+
+                $written_bytes += $length_of_data;
 
                 if ($eof) {
                     $self->run_hook('new_file_end', $self, $key, $class, $opts);
                     $eof_condition = 1;
+
+                    # Your fault
                     die "EOF at $written_bytes out of $length!" if $written_bytes != $length;
 
                     my $buf = slurp($socket);
                     setsockopt($socket, IPPROTO_TCP, TCP_CORK, 0) or warn "could not unset TCP_CORK";
-                    close($socket) or die "could not close socket: $!";
+                    unless(close($socket)) {
+                        if ($opts->{on_failure}) {
+                            $opts->{on_failure}->({
+                                uri => $path,
+                                bytes_sent => $written_bytes,
+                                total_bytes => $length,
+                                client => 'callback',
+                                time_elapsed => tv_interval($t0, [gettimeofday]),
+                            });
+                        }
+
+                        die "could not close socket: $!";
+                    }
                     my ($top, @headers) = split /\r?\n/, $buf;
                     if ($top =~ m{HTTP/1.[01]\s+2\d\d}) {
                         # Woo, 200!
                         $self->run_hook('store_file_end', $self, $key, $class, $opts);
+
+                        my $t2 = [gettimeofday];
 
                         my $rv = $self->{backend}->do_request
                             ("create_close", {
@@ -114,9 +162,27 @@ sub store_file_from_callback {
                                 path   => $path,
                         });
 
-
+                        if ($opts->{on_success}) {
+                            $opts->{on_success}->({
+                                uri => $path,
+                                total_bytes => $written_bytes,
+                                connect_time => tv_interval($t0, $t1),
+                                time_elapsed => tv_interval($t0, $t2),
+                                client => 'callback',
+                            });
+                        }
                     }
                     else {
+                        if ($opts->{on_failure}) {
+                            $opts->{on_failure}->({
+                                uri => $path,
+                                bytes_sent => $written_bytes,
+                                total_bytes => $length,
+                                client => 'callback',
+                                time_elapsed => tv_interval($t0, [gettimeofday]),
+                            });
+                        }
+
                         die "Got non-200 from remote server $top";
                     }
                 }
