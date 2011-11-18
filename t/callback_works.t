@@ -35,7 +35,7 @@ my $callback = $mogc->store_file_from_callback($key, 'rip', $exp_len, {
     on_success => sub {
         my ($args) = @_;
         diag Dumper($args);
-        ok length($args->{uri}) > 1;
+        ok length($args->{url}) > 1;
         is($args->{total_bytes}, $exp_len);
         is($args->{client}, 'callback');
         ok $args->{time_elapsed} > 0;

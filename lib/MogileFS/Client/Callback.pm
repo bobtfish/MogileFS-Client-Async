@@ -83,7 +83,7 @@ sub store_file_from_callback {
             warn "connect to $dest failed: $!";
             if ($opts->{on_failure}) {
                 $opts->{on_failure}->({
-                    uri => $path,
+                    url => $path,
                     bytes_sent => 0,
                     total_bytes => $length,
                     client => 'callback',
@@ -110,7 +110,7 @@ sub store_file_from_callback {
                 if (syswrite($socket, ref($data) ? $$data : $data)!=$length_of_data) {
                     if ($opts->{on_failure}) {
                         $opts->{on_failure}->({
-                            uri => $path,
+                            url => $path,
                             bytes_sent => $written_bytes,
                             total_bytes => $length,
                             client => 'callback',
@@ -135,7 +135,7 @@ sub store_file_from_callback {
                     unless(close($socket)) {
                         if ($opts->{on_failure}) {
                             $opts->{on_failure}->({
-                                uri => $path,
+                                url => $path,
                                 bytes_sent => $written_bytes,
                                 total_bytes => $length,
                                 client => 'callback',
@@ -164,7 +164,7 @@ sub store_file_from_callback {
 
                         if ($opts->{on_success}) {
                             $opts->{on_success}->({
-                                uri => $path,
+                                url => $path,
                                 total_bytes => $written_bytes,
                                 connect_time => tv_interval($t0, $t1),
                                 time_elapsed => tv_interval($t0, $t2),
@@ -175,7 +175,7 @@ sub store_file_from_callback {
                     else {
                         if ($opts->{on_failure}) {
                             $opts->{on_failure}->({
-                                uri => $path,
+                                url => $path,
                                 bytes_sent => $written_bytes,
                                 total_bytes => $length,
                                 client => 'callback',
