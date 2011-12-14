@@ -7,8 +7,11 @@ use AnyEvent::Socket;
 use URI;
 use Carp qw/confess/;
 use POSIX qw( EAGAIN );
+use Socket qw/ IPPROTO_TCP /;
 
 use base qw/ MogileFS::Client /;
+
+use constant TCP_CORK => ($^O eq "linux" ? 3 : 0); # XXX
 
 our $VERSION = '0.013';
 
@@ -139,6 +142,7 @@ sub store_file {
                 return;
             }
             $socket_fh = $fh;
+            setsockopt($socket_fh, IPPROTO_TCP, TCP_CORK, 1) or warn "could not set TCP_CORK" if TCP_CORK;
             $cv->send;
         }, sub { 10 };
         $cv->recv;
@@ -202,6 +206,7 @@ sub store_file {
         });
         $reset_timer->('start PUT');
         $cv->recv;
+        setsockopt($socket_fh, IPPROTO_TCP, TCP_CORK, 0) or warn "could not unset TCP_CORK" if TCP_CORK;
         $cv = AnyEvent->condvar;
         # FIXME - Cheat here, the response should be small, so we assume it'll allways all be
         #         readable at once, THIS MAY NOT BE TRUE!!!

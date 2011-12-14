@@ -1,3 +1,5 @@
+  - TCP_CORK added for the async client.
+
 0.013
   - Performance monitoring for Callback writes.
 
