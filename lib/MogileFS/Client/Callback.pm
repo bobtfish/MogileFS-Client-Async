@@ -75,7 +75,7 @@ sub store_file_from_callback {
             $t1 = [gettimeofday];
             my $buf = 'PUT ' . $uri->path . " HTTP/1.0\r\nConnection: close\r\nContent-Length: $length\r\n\r\n";
             setsockopt($socket, SOL_SOCKET, SO_SNDBUF, 65536) or warn "could enlarge socket buffer: $!" if (unpack("I", getsockopt($socket, SOL_SOCKET, SO_SNDBUF)) < 65536);
-            setsockopt($socket, IPPROTO_TCP, TCP_CORK, 1) or warn "could not set TCP_CORK";
+            setsockopt($socket, IPPROTO_TCP, TCP_CORK, 1) or warn "could not set TCP_CORK" if TCP_CORK;
             syswrite($socket, $buf)==length($buf) or die "Could not write all: $!";
         }
         catch {
@@ -131,7 +131,7 @@ sub store_file_from_callback {
                     die "EOF at $written_bytes out of $length!" if $written_bytes != $length;
 
                     my $buf = slurp($socket);
-                    setsockopt($socket, IPPROTO_TCP, TCP_CORK, 0) or warn "could not unset TCP_CORK";
+                    setsockopt($socket, IPPROTO_TCP, TCP_CORK, 0) or warn "could not unset TCP_CORK" if TCP_CORK;
                     unless(close($socket)) {
                         if ($opts->{on_failure}) {
                             $opts->{on_failure}->({
