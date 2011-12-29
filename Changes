@@ -1,5 +1,6 @@
   - TCP_CORK added for the async client.
   - Don't use TCP_CORK on non-Linux OSs.
+  - Try to connect to another host if the first fails (callback client.)
 
 0.013
   - Performance monitoring for Callback writes.
