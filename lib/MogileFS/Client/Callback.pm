@@ -189,7 +189,7 @@ sub store_file_from_callback {
                 return;
             };
         }
-    };
+    }
 
     # We failed to get any working hosts to upload to.
     return;
