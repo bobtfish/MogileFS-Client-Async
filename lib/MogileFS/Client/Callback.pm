@@ -57,14 +57,16 @@ sub store_file_from_callback {
     my ($error, $devid, $path);
     my @dests = (@$dests, @$dests, @$dests); # 2 retries
     my $try = 0;
+
+    my $uri = URI->new($path);
+    my $socket;
+    my $t0;
+    my $t1;
+
     foreach my $dest (@dests) {
         $try++;
         ($devid, $path) = @$dest;
-        my $uri = URI->new($path);
-        my $socket;
-        my $t0;
-        my $t1;
-        try {
+         try {
             $t0 = [gettimeofday];
             $socket = IO::Socket::INET->new(
                 Timeout => 10,
@@ -91,23 +93,50 @@ sub store_file_from_callback {
                 });
             }
         };
+        last if $socket;
+    }
 
-        if ($socket) {
-            my $eof_condition;
-            my $written_bytes = 0;
-            return sub {
-                my ($data, $eof) = @_;
+    if ($socket) {
+        my $eof_condition;
+        my $written_bytes = 0;
+        return sub {
+            my ($data, $eof) = @_;
 
-                # We don't notify you about this error, for it is your fault not the network's.
-                die "We've already hit EOF!" if $eof_condition;
-                my $length_of_data = length(ref($data) ? $$data : $data);
+            # We don't notify you about this error, for it is your fault not the network's.
+            die "We've already hit EOF!" if $eof_condition;
+            my $length_of_data = length(ref($data) ? $$data : $data);
 
-                # We don't notify you about this error, for it is your fault not the network's.
-                die "you're trying to write $written_bytes out of $length!" if $written_bytes > $length;
+            # We don't notify you about this error, for it is your fault not the network's.
+            die "you're trying to write $written_bytes out of $length!" if $written_bytes > $length;
 
 
-                # Write failed, so log an error
-                if (syswrite($socket, ref($data) ? $$data : $data)!=$length_of_data) {
+            # Write failed, so log an error
+            if (syswrite($socket, ref($data) ? $$data : $data)!=$length_of_data) {
+                if ($opts->{on_failure}) {
+                    $opts->{on_failure}->({
+                        url => $path,
+                        bytes_sent => $written_bytes,
+                        total_bytes => $length,
+                        client => 'callback',
+                        time_elapsed => tv_interval($t0, [gettimeofday]),
+                    });
+                }
+
+                die "could not write entire buffer: $!";
+            }
+
+            $written_bytes += $length_of_data;
+
+            if ($eof) {
+                $self->run_hook('new_file_end', $self, $key, $class, $opts);
+                $eof_condition = 1;
+
+                # Your fault
+                die "EOF at $written_bytes out of $length!" if $written_bytes != $length;
+
+                my $buf = slurp($socket);
+                setsockopt($socket, IPPROTO_TCP, TCP_CORK, 0) or warn "could not unset TCP_CORK" if TCP_CORK;
+                unless(close($socket)) {
                     if ($opts->{on_failure}) {
                         $opts->{on_failure}->({
                             url => $path,
@@ -118,77 +147,51 @@ sub store_file_from_callback {
                         });
                     }
 
-                    die "could not write entire buffer: $!";
+                    die "could not close socket: $!";
                 }
+                my ($top, @headers) = split /\r?\n/, $buf;
+                if ($top =~ m{HTTP/1.[01]\s+2\d\d}) {
+                    # Woo, 200!
+                    $self->run_hook('store_file_end', $self, $key, $class, $opts);
 
-                $written_bytes += $length_of_data;
+                    my $t2 = [gettimeofday];
 
-                if ($eof) {
-                    $self->run_hook('new_file_end', $self, $key, $class, $opts);
-                    $eof_condition = 1;
+                    my $rv = $self->{backend}->do_request
+                        ("create_close", {
+                            fid    => $res->{fid},
+                            devid  => $devid,
+                            domain => $self->{domain},
+                            size   => $length,
+                            key    => $key,
+                            path   => $path,
+                    });
 
-                    # Your fault
-                    die "EOF at $written_bytes out of $length!" if $written_bytes != $length;
-
-                    my $buf = slurp($socket);
-                    setsockopt($socket, IPPROTO_TCP, TCP_CORK, 0) or warn "could not unset TCP_CORK" if TCP_CORK;
-                    unless(close($socket)) {
-                        if ($opts->{on_failure}) {
-                            $opts->{on_failure}->({
-                                url => $path,
-                                bytes_sent => $written_bytes,
-                                total_bytes => $length,
-                                client => 'callback',
-                                time_elapsed => tv_interval($t0, [gettimeofday]),
-                            });
-                        }
-
-                        die "could not close socket: $!";
-                    }
-                    my ($top, @headers) = split /\r?\n/, $buf;
-                    if ($top =~ m{HTTP/1.[01]\s+2\d\d}) {
-                        # Woo, 200!
-                        $self->run_hook('store_file_end', $self, $key, $class, $opts);
-
-                        my $t2 = [gettimeofday];
-
-                        my $rv = $self->{backend}->do_request
-                            ("create_close", {
-                                fid    => $res->{fid},
-                                devid  => $devid,
-                                domain => $self->{domain},
-                                size   => $length,
-                                key    => $key,
-                                path   => $path,
+                    if ($opts->{on_success}) {
+                        $opts->{on_success}->({
+                            url => $path,
+                            total_bytes => $written_bytes,
+                            connect_time => tv_interval($t0, $t1),
+                            time_elapsed => tv_interval($t0, $t2),
+                            client => 'callback',
                         });
-
-                        if ($opts->{on_success}) {
-                            $opts->{on_success}->({
-                                url => $path,
-                                total_bytes => $written_bytes,
-                                connect_time => tv_interval($t0, $t1),
-                                time_elapsed => tv_interval($t0, $t2),
-                                client => 'callback',
-                            });
-                        }
-                    }
-                    else {
-                        if ($opts->{on_failure}) {
-                            $opts->{on_failure}->({
-                                url => $path,
-                                bytes_sent => $written_bytes,
-                                total_bytes => $length,
-                                client => 'callback',
-                                time_elapsed => tv_interval($t0, [gettimeofday]),
-                            });
-                        }
-
-                        die "Got non-200 from remote server $top";
                     }
                 }
-                return;
-            };
-        }
+                else {
+                    if ($opts->{on_failure}) {
+                        $opts->{on_failure}->({
+                            url => $path,
+                            bytes_sent => $written_bytes,
+                            total_bytes => $length,
+                            client => 'callback',
+                            time_elapsed => tv_interval($t0, [gettimeofday]),
+                        });
+                    }
+
+                    die "Got non-200 from remote server $top";
+                }
+            }
+            return;
+        };
     }
 
     # We failed to get any working hosts to upload to.
