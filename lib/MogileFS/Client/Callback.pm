@@ -58,7 +58,6 @@ sub store_file_from_callback {
     my @dests = (@$dests, @$dests, @$dests); # 2 retries
     my $try = 0;
 
-    my $uri = URI->new($path);
     my $socket;
     my $t0;
     my $t1;
@@ -66,6 +65,7 @@ sub store_file_from_callback {
     foreach my $dest (@dests) {
         $try++;
         ($devid, $path) = @$dest;
+        my $uri = URI->new($path);
          try {
             $t0 = [gettimeofday];
             $socket = IO::Socket::INET->new(
