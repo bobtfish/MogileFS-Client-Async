@@ -82,7 +82,7 @@ sub store_file_from_callback {
         }
         catch {
             $socket = undef;
-            warn "connect to $dest failed: $!";
+            warn "connect to $dest failed: $_";
             if ($opts->{on_failure}) {
                 $opts->{on_failure}->({
                     url => $path,
