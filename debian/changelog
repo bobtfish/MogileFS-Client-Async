@@ -1,0 +1,83 @@
+libmogilefs-client-async-perl (0.013-1) lucid; urgency=low
+
+  * Performance monitoring for Callback uploads.
+
+ -- Dave Lambley <davel@state51.co.uk>  Fri, 18 Nov 2011 14:23:43 +0000
+
+libmogilefs-client-async-perl (0.012-1) lucid; urgency=low
+
+  * Pass the data to upload by reference.
+
+ -- Dave Lambley <davel@state51.co.uk>  Tue, 26 Jul 2011 11:07:05 +0000
+
+libmogilefs-client-async-perl (0.011-1) unstable; urgency=low
+
+  * New streaming uploads into Mogile.
+
+ -- Dave Lambley <davel@state51.co.uk>  Mon, 25 Jul 2011 12:38:37 +0100
+
+libmogilefs-client-async-perl (0.010-1) unstable; urgency=low
+
+  * Fix connection retries due to timeout which fires too early
+
+ -- Tomas Doran <t0m@state51.co.uk>  Tue, 16 Nov 2010 18:08:00 +0000
+
+libmogilefs-client-async-perl (0.009-1) unstable; urgency=low
+
+  * make it more obvious when a connection retries due to timeout
+
+ -- Tomas Doran <t0m@state51.co.uk>  mon, 15 nov 2010 17:54:00 +0000
+
+libmogilefs-client-async-perl (0.008) hardy; urgency=low
+
+  * New upstream version.
+
+ -- Dave Lambley <davel@state51.co.uk>  Tue, 02 Nov 2010 15:39:44 +0000
+
+libmogilefs-client-async-perl (0.007-1) unstable; urgency=low
+
+  * Fix "Connection error: unknown error" warning
+
+ -- Tomas Doran <t0m@state51.co.uk>  Mon, 18 Oct 2010 14:55:00 +0100
+
+libmogilefs-client-async-perl (0.006-1) unstable; urgency=low
+
+  * Increase http response timeout to 20m.
+
+ -- Tomas Doran <t0m@state51.co.uk>  Thu, 7 Oct 2010 17:15:16 +0100
+
+libmogilefs-client-async-perl (0.005-1) unstable; urgency=low
+
+  * Increase read/write timeout to 60s.
+
+ -- Tomas Doran <t0m@state51.co.uk>  Thu, 7 Oct 2010 17:15:16 +0100
+
+ibmogilefs-client-async-perl (0.004-1) unstable; urgency=low
+
+  * Fix HTTP 1.1 response to 1.0 request.
+
+ -- Tomas Doran <t0m@state51.co.uk>  Wed, 6 Oct 2010 17:05:16 +0100
+
+libmogilefs-client-async-perl (0.003-1) unstable; urgency=low
+
+  * Fix retry.
+
+ -- Tomas Doran <t0m@state51.co.uk>  Wed, 29 Sep 2010 14:27:16 +0100
+
+libmogilefs-client-async-perl (0.002-1) unstable; urgency=low
+
+  * Fix initial reliability bugs by adding a retry.
+
+ -- Tomas Doran <t0m@state51.co.uk>  Wed, 29 Sep 2010 14:27:16 +0100
+
+libmogilefs-client-async-perl (0.001-2) hardy; urgency=low
+
+  * Depend on libtest-simple-perl for building on hardy.
+
+ -- Dave Lambley <davel@state51.co.uk>  Wed, 29 Sep 2010 14:18:48 +0100
+
+libmogilefs-client-async-perl (0.001-1) unstable; urgency=low
+
+  * Initial Release.
+
+ -- Tomas Doran <t0m@state51.co.uk>  Wed, 29 Sep 2010 11:24:16 +0100
