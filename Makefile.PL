@@ -19,7 +19,7 @@ recommends 'IO::AIO' => 3.25;
 
 test_requires 'Test::More' => 0.88;
 
-repository 'git://github.com/bobtfish/MogileFS-Client-Async.git';
+repository 'git://github.com/davel/MogileFS-Client-Async.git';
 
 WriteAll;
 

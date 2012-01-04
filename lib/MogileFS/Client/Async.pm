@@ -13,7 +13,7 @@ use base qw/ MogileFS::Client /;
 
 use constant TCP_CORK => ($^O eq "linux" ? 3 : 0); # XXX
 
-our $VERSION = '0.014';
+our $VERSION = '0.015';
 
 BEGIN {
     my @steal_symbols = qw/ fadvise FADV_SEQUENTIAL /;
