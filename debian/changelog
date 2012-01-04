@@ -52,7 +52,7 @@ libmogilefs-client-async-perl (0.005-1) unstable; urgency=low
 
  -- Tomas Doran <t0m@state51.co.uk>  Thu, 7 Oct 2010 17:15:16 +0100
 
-ibmogilefs-client-async-perl (0.004-1) unstable; urgency=low
+libmogilefs-client-async-perl (0.004-1) unstable; urgency=low
 
   * Fix HTTP 1.1 response to 1.0 request.
 
