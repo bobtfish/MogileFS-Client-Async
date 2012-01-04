@@ -15,6 +15,37 @@ use constant TCP_CORK => ($^O eq "linux" ? 3 : 0); # XXX
 
 use namespace::clean;
 
+=head1 NAME
+
+MogileFS::Client::Callback
+
+=head1 SYNOPSIS
+
+    my $mogfs = MogileFS::Client::Callback->new( ... )
+
+    my $f = $mogfs->store_file_from_callback($class, $length, \%opts);
+
+    $f->($data, 0);
+
+    $f->("", 1); # indicate EOF
+
+=head1 DESCRIPTION
+
+This package inherits from L<MogileFS::Client::Async> and provides an additional
+blocking API in which the data you wish to upload is supplied to a callback
+function, allowing other processing to take place on data as you read it from
+disc or elsewhere.
+
+=head1 SEE ALSO
+
+=over
+
+=item L<MogileFS::Client::Async>
+
+=back
+
+=cut
+
 sub store_file_from_callback {
     my $self = shift;
     return undef if $self->{readonly};

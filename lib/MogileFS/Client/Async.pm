@@ -30,6 +30,45 @@ BEGIN {
     }
 }
 
+
+=head1 NAME
+
+MogileFS:Client::Async
+
+=head1 SYNOPSIS
+
+   my $mogfs = MogileFS::Client::Async->new( ... )
+
+   $mogfs->read_to_file($key, $filename);
+   
+   $mogfs->store_file($key, $class, $filename, \%opts );
+   
+   $mogfs->store_content($key, $class, \$content, \%opts );
+
+=head1 DESCRIPTION
+
+This package provides replacement implementations of some methods in
+L<MogileFS::Client> to allow for non-blocking IO under L<AnyEvent> and the
+ability to read and write files stored in MogileFS without needing to store
+the entire file in memory.
+
+=head1 SEE ALSO
+
+=over
+
+=item *
+L<AnyEvent>
+
+=item *
+L<MogileFS::Client>
+
+=item *
+L<http://danga.com/mogilefs/>
+
+=back
+
+=cut
+
 use namespace::clean;
 
 sub new_file { confess("new_file is unsupported in " . __PACKAGE__) }
