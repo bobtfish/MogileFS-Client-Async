@@ -9,6 +9,7 @@ use Try::Tiny;
 use Socket qw/ SO_SNDBUF SOL_SOCKET IPPROTO_TCP /;
 use Time::HiRes qw/ gettimeofday tv_interval /;
 use Linux::PipeMagic qw/ syssendfile /;
+use IO::AIO qw/ fadvise /;
 
 use base qw/ MogileFS::Client::Async /;
 
@@ -58,7 +59,7 @@ sub store_file_from_fh {
     $opts ||= {};
 
     # Hint to Linux that doubling readahead will probably pay off.
-    fadvise($read_fh, 0, 0, FADV_SEQUENTIAL());
+    fadvise($read_fh, 0, 0, IO::AIO::FADV_SEQUENTIAL());
 
     # Extra args to be passed along with the create_open and create_close commands.
     # Any internally generated args of the same name will overwrite supplied ones in

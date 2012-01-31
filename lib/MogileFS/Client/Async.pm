@@ -11,25 +11,11 @@ use Socket qw/ IPPROTO_TCP /;
 
 use base qw/ MogileFS::Client /;
 
+use IO::AIO qw/ fadvise /;
+
 use constant TCP_CORK => ($^O eq "linux" ? 3 : 0); # XXX
 
 our $VERSION = '0.016';
-
-BEGIN {
-    my @steal_symbols = qw/ fadvise FADV_SEQUENTIAL /;
-    if (eval {require IO::AIO; 1}) {
-        foreach my $sym (@steal_symbols) {
-            no strict 'refs';
-            *{$sym} = \&{"IO::AIO::$sym"};
-        }
-    }
-    else {
-        foreach my $sym (@steal_symbols) {
-            *{$sym} = sub {};
-        }
-    }
-}
-
 
 =head1 NAME
 
@@ -195,7 +181,7 @@ sub store_file {
         open my $fh_from, "<", $file or confess("Could not open $file");
 
         # Hint to Linux that doubling readahead will probably pay off.
-        fadvise($fh_from, 0, 0, FADV_SEQUENTIAL());
+        fadvise($fh_from, 0, 0, IO::AIO::FADV_SEQUENTIAL());
 
         $length = -s $file;
         my $buf = 'PUT ' . $uri->path . " HTTP/1.0\r\nConnection: close\r\nContent-Length: $length\r\n\r\n";
