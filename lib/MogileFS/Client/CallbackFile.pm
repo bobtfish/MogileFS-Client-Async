@@ -85,7 +85,11 @@ sub store_file_from_fh {
             next unless $res;
 
             for my $i (1..$res->{dev_count}) {
-                push @dests, [ $res->{"devid_$i"}, $res->{"path_$i"}, $res->{fid} ];
+                push @dests, {
+                    devid => $res->{"devid_$i"},
+                    path  => $res->{"path_$i"},
+                    fid   => $res->{fid},
+                };
             }
             if (@dests) {
                 return pop @dests;
@@ -120,13 +124,13 @@ sub store_file_from_fh {
                     $last_written_point = 0;
                     $current_dest = $get_new_dest->();
 
-                    my $uri = URI->new($current_dest->[1]);
+                    my $uri = URI->new($current_dest->{path});
                     $socket = IO::Socket::INET->new(
                         Timeout => 10,
                         Proto => "tcp",
                         PeerPort => $uri->port,
                         PeerHost => $uri->host,
-                    ) or die "connect to ".$current_dest->[1]." failed: $!";
+                    ) or die "connect to ".$current_dest->{path}." failed: $!";
                     my $buf = 'PUT ' . $uri->path . " HTTP/1.0\r\nConnection: close\r\nContent-Length: $eventual_length\r\n\r\n";
                     setsockopt($socket, SOL_SOCKET, SO_SNDBUF, 65536) or warn "could enlarge socket buffer: $!" if (unpack("I", getsockopt($socket, SOL_SOCKET, SO_SNDBUF)) < 65536);
                     setsockopt($socket, IPPROTO_TCP, TCP_CORK, 1) or warn "could not set TCP_CORK" if TCP_CORK;
@@ -181,12 +185,12 @@ sub store_file_from_fh {
                     try {
                         $rv = $self->{backend}->do_request
                             ("create_close", {
-                                fid    => $current_dest->[2],
-                                devid  => $current_dest->[0],
+                                fid    => $current_dest->{fid},
+                                devid  => $current_dest->{devid},
                                 domain => $self->{domain},
                                 size   => $eventual_length,
                                 key    => $key,
-                                path   => $current_dest->[1],
+                                path   => $current_dest->{path},
                             });
                     }
                     catch {
