@@ -10,6 +10,7 @@ use Socket qw/ SO_SNDBUF SOL_SOCKET IPPROTO_TCP /;
 use Time::HiRes qw/ gettimeofday tv_interval /;
 use Linux::PipeMagic qw/ syssendfile /;
 use IO::AIO qw/ fadvise /;
+use LWP::Simple qw/ head /;
 
 use base qw/ MogileFS::Client::Async /;
 
@@ -188,6 +189,18 @@ sub store_file_from_fh {
                 my ($top, @headers) = split /\r?\n/, $buf;
                 if ($top =~ m{HTTP/1.[01]\s+2\d\d}) {
                     # Woo, 200!
+
+                    try {
+                        my $probe_length = (head($current_dest->{path}))[1];
+                        die "probe failed: $probe_length vs $eventual_length" if $probe_length != $eventual_length;
+                    }
+                    catch {
+                        $last_error = "HEAD check on newly written file failed: $_";
+                        warn $last_error;
+                        $socket = undef;
+                        next;
+                    };
+
 
                     my $rv;
                     try {
