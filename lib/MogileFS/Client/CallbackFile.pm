@@ -144,7 +144,7 @@ sub store_file_from_fh {
                     }
                     else {
                         $last_error = $!;
-                        warn "syssplice failed, only $c out of $bytes_to_write written: $!";
+                        warn "syssendfile failed, only $c out of $bytes_to_write written: $!";
                         $socket = undef;
                     }
                 }
