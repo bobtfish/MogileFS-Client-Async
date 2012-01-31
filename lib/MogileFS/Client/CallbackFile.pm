@@ -82,6 +82,7 @@ sub store_file_from_fh {
                     key    => $key,
                     fid    => $opts->{fid} || 0, # fid should be specified, or pass 0 meaning to auto-generate one
                     multi_dest => 1,
+                    size   => $eventual_length,
                 }
             );
 
