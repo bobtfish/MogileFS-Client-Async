@@ -111,6 +111,7 @@ sub store_file_from_fh {
     # indicate that we should reconnect.
     my $socket;
 
+
     # We keep track of where we last wrote to.
     my $last_written_point;
 
@@ -121,6 +122,15 @@ sub store_file_from_fh {
         my ($available_to_read, $eof) = @_;
 
         my $last_error;
+
+        my $fail_write_attempt = sub {
+            my ($msg) = @_;
+            $last_error = $msg;
+            warn $msg;
+            $socket = undef;
+            $opts->{on_failure}->() if $opts->{on_failure};
+        };
+
 
         foreach (1..5) {
             $last_error = undef;
@@ -133,6 +143,8 @@ sub store_file_from_fh {
                     $last_written_point = 0;
                     $current_dest = $get_new_dest->();
 
+                    $opts->{on_new_attempt}->($current_dest) if $opts->{on_new_attempt};
+
                     my $uri = URI->new($current_dest->{path});
                     $socket = IO::Socket::INET->new(
                         Timeout => 10,
@@ -140,15 +152,16 @@ sub store_file_from_fh {
                         PeerPort => $uri->port,
                         PeerHost => $uri->host,
                     ) or die "connect to ".$current_dest->{path}." failed: $!";
+
+                    $opts->{on_connect}->() if $opts->{on_connect};
+
                     my $buf = 'PUT ' . $uri->path . " HTTP/1.0\r\nConnection: close\r\nContent-Length: $eventual_length\r\n\r\n";
                     setsockopt($socket, SOL_SOCKET, SO_SNDBUF, 65536) or warn "could not enlarge socket buffer: $!" if (unpack("I", getsockopt($socket, SOL_SOCKET, SO_SNDBUF)) < 65536);
                     setsockopt($socket, IPPROTO_TCP, TCP_CORK, 1) or warn "could not set TCP_CORK" if TCP_CORK;
                     syswrite($socket, $buf)==length($buf) or die "Could not write all: $!";
                 }
                 catch {
-                    $last_error = $_;
-                    warn $last_error;
-                    $socket = undef;
+                    $fail_write_attempt->($_);
                 };
             }
 
@@ -162,9 +175,8 @@ sub store_file_from_fh {
                         $last_written_point += $c;
                     }
                     else {
-                        $last_error = $!;
+                        $fail_write_attempt->($_);
                         warn "syssendfile failed, only $c out of $bytes_to_write written: $!";
-                        $socket = undef;
                     }
                 }
                 elsif ($bytes_to_write < 0) {
@@ -180,9 +192,8 @@ sub store_file_from_fh {
                 my $buf = slurp($socket);
                 setsockopt($socket, IPPROTO_TCP, TCP_CORK, 0) or warn "could not unset TCP_CORK" if TCP_CORK;
                 unless(close($socket)) {
-                    $last_error = $!;
+                    $fail_write_attempt->($!);
                     warn "could not close socket: $!";
-                    $socket = undef;
                     next;
                 }
 
@@ -190,14 +201,14 @@ sub store_file_from_fh {
                 if ($top =~ m{HTTP/1.[01]\s+2\d\d}) {
                     # Woo, 200!
 
+                    $opts->{on_http_done}->() if $opts->{http_done};
+
                     try {
                         my $probe_length = (head($current_dest->{path}))[1];
                         die "probe failed: $probe_length vs $eventual_length" if $probe_length != $eventual_length;
                     }
                     catch {
-                        $last_error = "HEAD check on newly written file failed: $_";
-                        warn $last_error;
-                        $socket = undef;
+                        $fail_write_attempt->("HEAD check on newly written file failed: $_");
                         next;
                     };
 
@@ -226,15 +237,11 @@ sub store_file_from_fh {
                         return $eventual_length;
                     }
                     else {
-                        $last_error =  "create_close failed";
-                        warn $last_error;
-                        $socket = undef;
+                        $fail_write_attempt->("create_close failed");
                     }
                 }
                 else {
-                    $last_error = "Got non-200 from remote server $top";
-                    warn $last_error;
-                    $socket = undef;
+                    $self->fail_write_attempt->("Got non-200 from remote server $top");
                     next;
                 }
             }
