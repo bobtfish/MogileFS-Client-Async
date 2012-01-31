@@ -57,6 +57,9 @@ sub store_file_from_fh {
     my ($key, $class, $read_fh, $eventual_length, $opts) = @_;
     $opts ||= {};
 
+    # Hint to Linux that doubling readahead will probably pay off.
+    fadvise($read_fh, 0, 0, FADV_SEQUENTIAL());
+
     # Extra args to be passed along with the create_open and create_close commands.
     # Any internally generated args of the same name will overwrite supplied ones in
     # these hashes.
