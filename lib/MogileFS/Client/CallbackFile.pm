@@ -24,16 +24,19 @@ MogileFS::Client::CallbackFile
 
     my $mogfs = MogileFS::Client::Callback->new( ... )
 
-    my $f = $mogfs->store_file_from_callback($class, $length, \%opts);
+    open(my $read_fh, "<", "...") or die ...
+    my $eventual_length = -s $read_fh;
+    my $f = $mogfs->store_file_from_fh($class, $read_fh, $eventual_length, \%opts);
 
-    $f->($data, 0);
+    $f->($eventual_length, 0);
 
     $f->("", 1); # indicate EOF
 
 =head1 DESCRIPTION
 
 This package inherits from L<MogileFS::Client::Async> and provides an additional
-blocking API in which the data you wish to upload is supplied to a callback
+blocking API in which the data you wish to upload is read from a file when
+commanded by a callback function.
 function, allowing other processing to take place on data as you read it from
 disc or elsewhere.
 
