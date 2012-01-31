@@ -120,10 +120,10 @@ sub store_file_from_fh {
             $last_error = undef;
 
             # Create a connection to the storage backend
+            sysseek($read_fh, 0, 0) or die "seek failed: $!";
             unless ($socket) {
                 try {
                     $last_written_point = 0;
-                    sysseek($read_fh, 0, 0) or die "seek failed: $!";
                     $last_written_point = 0;
                     $current_dest = $get_new_dest->();
 
