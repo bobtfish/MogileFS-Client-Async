@@ -218,6 +218,9 @@ sub store_file_from_fh {
                         warn "create_close exploded: $!";
                     };
 
+                    # TODO we used to have a file check to query the size of the
+                    # file which we just uploaded to MogileFS.
+
                     if ($rv) {
                         $self->run_hook('store_file_end', $self, $key, $class, $opts);
                         return $eventual_length;
