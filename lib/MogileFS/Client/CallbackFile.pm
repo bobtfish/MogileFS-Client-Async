@@ -8,7 +8,7 @@ use File::Slurp qw/ slurp /;
 use Try::Tiny;
 use Socket qw/ SO_SNDBUF SOL_SOCKET IPPROTO_TCP /;
 use Time::HiRes qw/ gettimeofday tv_interval /;
-use Linux::PipeMagic qw/ syssplice /;
+use Linux::PipeMagic qw/ syssendfile /;
 
 use base qw/ MogileFS::Client::Async /;
 
@@ -138,9 +138,7 @@ sub store_file_from_fh {
                 my $bytes_to_write = $available_to_read - $last_written_point;
 
                 if ($bytes_to_write > 0) {
-                    sysread($read_fh, my $buf, $bytes_to_write);
-                    my $c = syswrite($socket, $buf);
-#                    my $c = syssplice($read_fh, $socket, $bytes_to_write, 0);
+                    my $c = syssendfile($socket, $read_fh, $bytes_to_write);
                     if ($c == $bytes_to_write) {
                         $last_written_point += $c;
                     }

@@ -15,6 +15,9 @@ requires 'IO::Socket::INET';
 requires 'Try::Tiny';
 requires 'File::Slurp';
 
+# CallbackFile.pm
+requires 'Linux::PipeMagic' => 0.03;
+
 recommends 'IO::AIO' => 3.25;
 
 test_requires 'Test::More' => 0.88;
