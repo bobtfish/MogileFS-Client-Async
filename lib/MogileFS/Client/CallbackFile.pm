@@ -94,8 +94,14 @@ sub store_file_from_fh {
         die "Fail to get a destination to write to.";
     };
 
+    # When we have a hiccough in your connection, we mark $socket as undef to
+    # indicate that we should reconnect.
     my $socket;
+
+    # We keep track of where we last wrote to.
     my $last_written_point;
+
+    # The pointing to the arrayref we're currently writing to.
     my $current_dest;
 
     return sub {
