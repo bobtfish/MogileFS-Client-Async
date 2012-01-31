@@ -9,16 +9,15 @@ requires 'AnyEvent';
 requires 'AnyEvent::HTTP';
 requires 'namespace::clean';
 
-# Perhaps these should be merely recommended, they are only needed by
-# Callback.pm.
 requires 'IO::Socket::INET';
 requires 'Try::Tiny';
 requires 'File::Slurp';
 
 # CallbackFile.pm
 requires 'Linux::PipeMagic' => 0.03;
+requires 'LWP::Simple';
 
-recommends 'IO::AIO' => 3.25;
+requires 'IO::AIO' => 3.25;
 
 test_requires 'Test::More' => 0.88;
 
