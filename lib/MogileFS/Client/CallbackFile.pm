@@ -8,6 +8,7 @@ use File::Slurp qw/ slurp /;
 use Try::Tiny;
 use Socket qw/ SO_SNDBUF SOL_SOCKET IPPROTO_TCP /;
 use Time::HiRes qw/ gettimeofday tv_interval /;
+use Linux::PipeMagic qw/ syssplice /;
 
 use base qw/ MogileFS::Client::Async /;
 
@@ -69,6 +70,7 @@ sub store_file_from_fh {
             $self->run_hook('store_file_start', $self, $key, $class, $opts);
             $self->run_hook('new_file_start', $self, $key, $class, $opts);
 
+            # Calls to the backend may be explodey.
             my $res = $self->{backend}->do_request(
                 create_open => {
                     %$create_open_args,
@@ -136,7 +138,9 @@ sub store_file_from_fh {
                 my $bytes_to_write = $available_to_read - $last_written_point;
 
                 if ($bytes_to_write > 0) {
-                    my $c = syssplice($read_fh, $socket, $bytes_to_write, 0);
+                    sysread($read_fh, my $buf, $bytes_to_write);
+                    my $c = syswrite($socket, $buf);
+#                    my $c = syssplice($read_fh, $socket, $bytes_to_write, 0);
                     if ($c == $bytes_to_write) {
                         $last_written_point += $c;
                     }
@@ -169,15 +173,21 @@ sub store_file_from_fh {
                 if ($top =~ m{HTTP/1.[01]\s+2\d\d}) {
                     # Woo, 200!
 
-                    my $rv = $self->{backend}->do_request
-                        ("create_close", {
-                            fid    => $current_dest->[2],
-                            devid  => $current_dest->[0],
-                            domain => $self->{domain},
-                            size   => $eventual_length,
-                            key    => $key,
-                            path   => $current_dest->[1],
-                        });
+                    my $rv;
+                    try {
+                        $rv = $self->{backend}->do_request
+                            ("create_close", {
+                                fid    => $current_dest->[2],
+                                devid  => $current_dest->[0],
+                                domain => $self->{domain},
+                                size   => $eventual_length,
+                                key    => $key,
+                                path   => $current_dest->[1],
+                            });
+                    }
+                    catch {
+                        warn "create_close exploded: $!";
+                    };
 
                     if ($rv) {
                         $self->run_hook('store_file_end', $self, $key, $class, $opts);
@@ -195,6 +205,10 @@ sub store_file_from_fh {
                     $socket = undef;
                     next;
                 }
+            }
+
+            if ($last_written_point == $available_to_read) {
+                return;
             }
         }
 
