@@ -1,3 +1,6 @@
+0.017
+  - Fix bug affecting files written in multiple calls.
+
 0.016
   - New CallbackFile client.
 
