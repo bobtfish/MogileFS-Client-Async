@@ -136,8 +136,8 @@ sub store_file_from_fh {
             $last_error = undef;
 
             # Create a connection to the storage backend
-            sysseek($read_fh, 0, 0) or die "seek failed: $!";
             unless ($socket) {
+                sysseek($read_fh, 0, 0) or die "seek failed: $!";
                 try {
                     $last_written_point = 0;
                     $last_written_point = 0;
