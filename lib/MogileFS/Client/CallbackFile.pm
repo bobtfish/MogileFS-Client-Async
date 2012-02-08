@@ -79,17 +79,23 @@ sub store_file_from_fh {
             $self->run_hook('new_file_start', $self, $key, $class, $opts);
 
             # Calls to the backend may be explodey.
-            my $res = $self->{backend}->do_request(
-                create_open => {
-                    %$create_open_args,
-                    domain => $self->{domain},
-                    class  => $class,
-                    key    => $key,
-                    fid    => $opts->{fid} || 0, # fid should be specified, or pass 0 meaning to auto-generate one
-                    multi_dest => 1,
-                    size   => $eventual_length, # not supported by current version
-                }
-            );
+            my $res;
+            try {
+                $res = $self->{backend}->do_request(
+                    create_open => {
+                        %$create_open_args,
+                        domain => $self->{domain},
+                        class  => $class,
+                        key    => $key,
+                        fid    => $opts->{fid} || 0, # fid should be specified, or pass 0 meaning to auto-generate one
+                        multi_dest => 1,
+                        size   => $eventual_length, # not supported by current version
+                    }
+                );
+            }
+            catch {
+                warn "Mogile backend failed: $_";
+            };
 
             next unless $res;
 
