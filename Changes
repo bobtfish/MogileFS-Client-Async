@@ -1,3 +1,5 @@
+  - Handle things better if the call to the tracker explodes.
+
 0.017
   - Fix bug affecting files written in multiple calls.
 
