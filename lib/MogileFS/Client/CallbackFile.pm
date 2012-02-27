@@ -191,6 +191,7 @@ sub store_file_from_fh {
             }
 
             if ($socket && $eof) {
+                die "File is longer than initially declared, is it still being written to? We are at $last_written_point, $eventual_length initially declared" if ($last_written_point > $eventual_length);
                 die "Cannot be at eof, only $last_written_point out of $eventual_length written!" unless ($last_written_point == $eventual_length);
 
                 $self->run_hook('new_file_end', $self, $key, $class, $opts);
