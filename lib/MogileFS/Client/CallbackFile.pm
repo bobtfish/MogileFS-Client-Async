@@ -211,6 +211,7 @@ sub store_file_from_fh {
                     $opts->{on_http_done}->() if $opts->{http_done};
 
                     try {
+                        # XXX - What's the timeout here.
                         my $probe_length = (head($current_dest->{path}))[1];
                         die "probe failed: $probe_length vs $eventual_length" if $probe_length != $eventual_length;
                     }
