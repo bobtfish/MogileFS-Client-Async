@@ -27,33 +27,36 @@ my $mogc = MogileFS::Client::CallbackFile->new(
 );
 ok $mogc, 'Have client';
 
-my $key = 'test-t0m-foobar';
+{
+    my $key = 'test-t0m-foobar';
 
 
 
-open(my $read_fh, "<", $0) or die "failed to open $0: $!";
+    open(my $read_fh, "<", $0) or die "failed to open $0: $!";
 
-isa_ok($read_fh, 'GLOB');
+    isa_ok($read_fh, 'GLOB');
 
-my $exp_len = -s $read_fh;
-my $callback = $mogc->store_file_from_fh($key, 'rip', $read_fh, $exp_len, {});
+    my $exp_len = -s $read_fh;
+    my $callback = $mogc->store_file_from_fh($key, 'rip', $read_fh, $exp_len, {});
 
-isa_ok($callback, 'CODE');
+    isa_ok($callback, 'CODE');
 
-$callback->(0, 0);
-$callback->(1, 0);
-$callback->(2, 0);
-$callback->($exp_len, 0);
-$callback->($exp_len, 1);
+    $callback->(0, 0);
+    $callback->(1, 0);
+    $callback->(2, 0);
+    $callback->($exp_len, 0);
+    $callback->($exp_len, 1);
 
-lives_ok {
-    my ($fh, $fn) = tempfile;
-    $mogc->read_to_file($key, $fn);
-    is( -s $fn, $exp_len, 'Read file back with correct length' )
-        or system("diff -u $0 $fn");
-    is sha1($fn), $exp_sha, 'Read file back with correct SHA1';
-    unlink $fn;
-};
+    lives_ok {
+        my ($fh, $fn) = tempfile;
+        $mogc->read_to_file($key, $fn);
+        is( -s $fn, $exp_len, 'Read file back with correct length' )
+            or system("diff -u $0 $fn");
+        is sha1($fn), $exp_sha, 'Read file back with correct SHA1';
+        unlink $fn;
+    };
+}
+
 
 done_testing;
 
