@@ -56,7 +56,7 @@ sub store_file_from_fh {
     my $self = shift;
     return undef if $self->{readonly};
 
-    my ($key, $class, $read_fh, $eventual_length, $opts) = @_;
+    my ($_key, $class, $read_fh, $eventual_length, $opts) = @_;
     $opts ||= {};
 
     # Hint to Linux that doubling readahead will probably pay off.
@@ -69,12 +69,17 @@ sub store_file_from_fh {
     my $create_close_args = $opts->{create_close_args} || {};
 
     my @dests;  # ( [devid,path,fid], [devid,path,fid], ... )
+
+    my $key;
+
     my $get_new_dest = sub {
         if (@dests) {
             return pop @dests;
         }
 
         foreach (1..5) {
+            $key = ref($_key) eq 'CODE' ? $_key->() : $_key;
+
             $self->run_hook('store_file_start', $self, $key, $class, $opts);
             $self->run_hook('new_file_start', $self, $key, $class, $opts);
 
