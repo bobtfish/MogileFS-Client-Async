@@ -28,7 +28,7 @@ MogileFS::Client::CallbackFile
 
     open(my $read_fh, "<", "...") or die ...
     my $eventual_length = -s $read_fh;
-    my $f = $mogfs->store_file_from_fh($class, $read_fh, $eventual_length, \%opts);
+    my $f = $mogfs->store_file_from_fh($key, $class, $read_fh, $eventual_length, \%opts);
 
     $f->($eventual_length, 0);
 
