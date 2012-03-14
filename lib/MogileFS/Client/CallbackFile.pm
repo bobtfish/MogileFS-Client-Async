@@ -97,7 +97,14 @@ sub store_file_from_fh {
                 warn "Mogile backend failed: $_";
             };
 
-            next unless $res;
+            unless ($res) {
+                # Attempting to connect to the Mogile backend completely failed
+                # let's sleep for a second to see if the problem clears.  We
+                # don't sleep for other errors as we'll arrive back here if the
+                # network fails eventually.
+                sleep 1;
+                next;
+            }
 
             for my $i (1..$res->{dev_count}) {
                 push @dests, {
