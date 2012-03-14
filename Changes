@@ -1,4 +1,6 @@
   - More helpful error when files grow during writing.
+  - Allow a coderef to be passed rather than a dkey, for possibly safer
+    re-uploading.
 
 0.018
   - Handle things better if the call to the tracker explodes.
