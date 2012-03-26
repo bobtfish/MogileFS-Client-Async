@@ -144,10 +144,20 @@ sub store_file_from_fh {
         my $fail_write_attempt = sub {
             my ($msg) = @_;
             $last_error = $msg;
+
+            if ($opts->{on_failure}) {
+                $opts->{on_failure}->({
+                    url   => $current_dest ? $current_dest->{path} : undef,
+                    bytes_sent => $last_written_point,
+                    total_bytes => $eventual_length,
+                    client => 'callbackfile',
+                    error => $msg,
+                });
+            }
+
             warn $msg;
             $socket = undef;
             $last_written_point = 0;
-            $opts->{on_failure}->({error => $msg }) if $opts->{on_failure};
         };
 
 
