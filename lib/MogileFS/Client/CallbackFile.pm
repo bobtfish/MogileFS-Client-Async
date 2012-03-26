@@ -146,7 +146,8 @@ sub store_file_from_fh {
             $last_error = $msg;
             warn $msg;
             $socket = undef;
-            $opts->{on_failure}->() if $opts->{on_failure};
+            $last_written_point = 0;
+            $opts->{on_failure}->($msg) if $opts->{on_failure};
         };
 
 

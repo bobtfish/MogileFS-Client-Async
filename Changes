@@ -1,3 +1,5 @@
+  - Correctly recover should create_close fail.
+
 0.019
   - More helpful error when files grow during writing.
   - Allow a coderef to be passed rather than a dkey, for possibly safer
