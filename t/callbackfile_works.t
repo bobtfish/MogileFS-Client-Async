@@ -82,5 +82,52 @@ ok $mogc, 'Have client';
     };
 }
 
+{
+    open(my $read_fh, "<", $0) or die "failed to open $0: $!";
+    isa_ok($read_fh, 'GLOB');
+
+    no strict 'refs';
+    my $old_cc = \&MogileFS::Backend::do_request;
+
+    my $fail = 3;
+    *MogileFS::Backend::do_request = sub {
+        if ($_[1] eq 'create_close') {
+            die if $fail--;
+        }
+        return $old_cc->(@_);
+    };
+
+    use strict;
+
+
+    my $exp_len = -s $read_fh;
+    my $key;
+    my $keys_requested = 0;
+
+
+    my $callback = $mogc->store_file_from_fh(sub {
+        $keys_requested++;
+        $key = "test-".int(rand(100000));
+        diag "made key $key";
+        return $key;
+    }, 'rip', $read_fh, $exp_len, {});
+
+    isa_ok($callback, 'CODE');
+    $callback->($exp_len, 1);
+
+    diag "key finally is $key\n";
+    is($keys_requested, 2);
+
+    lives_ok {
+        my ($fh, $fn) = tempfile;
+        $mogc->read_to_file($key, $fn);
+        is( -s $fn, $exp_len, 'Read file back with correct length' )
+            or system("diff -u $0 $fn");
+        is sha1($fn), $exp_sha, 'Read file back with correct SHA1';
+        unlink $fn;
+    };
+}
+
+
 done_testing;
 
