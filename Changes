@@ -1,3 +1,7 @@
+0.021
+  - Fail correctly if we never get a response from the remote server,
+    rather than causing an exception
+
 0.020
   - Correctly recover should create_close fail.
 
